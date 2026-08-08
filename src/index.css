@@ -1,0 +1,38 @@
+@import "tailwindcss";
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply min-h-screen text-[#e6d5bc] antialiased;
+  background: #0d0907;
+  background-attachment: fixed;
+  overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Удобный скролл для эмодзи-панели */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #d4af37;
+  border-radius: 999px;
+}
+
+/* Safe area для iPhone */
+.safe-area-pb {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+
+/* Мобильные улучшения карточек */
+@media (max-width: 640px) {
+  img {
+    max-width: 100%;
+  }
+}

@@ -1,0 +1,252 @@
+import { useEffect, useState } from "react";
+import roles from "../data/roles";
+import {
+  ROLE_PRICES,
+  EMOJIS,
+  DECORATIONS,
+  ADMIN_DECORATION
+} from "../data/shopData";
+import {
+  getWallet,
+  purchase,
+  ownsRole,
+  ownsEmoji,
+  ownsDecoration,
+  setEquippedDecoration,
+  redeemPromoCode
+} from "../services/wallet";
+import DecorationSVG from "../components/shop/DecorationSVG";
+
+const TABS = [
+  { id: "roles", label: "Роли" },
+  { id: "emojis", label: "Эмодзи" },
+  { id: "decor", label: "Украшения" },
+  { id: "promo", label: "Промокод" }
+];
+
+export default function Shop() {
+  const [tab, setTab] = useState("roles");
+  const [wallet, setWallet] = useState(getWallet());
+  const [promoInput, setPromoInput] = useState("");
+  const [promoMsg, setPromoMsg] = useState(null);
+
+  useEffect(() => {
+    const refresh = () => setWallet(getWallet());
+    window.addEventListener("mafia-wallet-changed", refresh);
+    return () => window.removeEventListener("mafia-wallet-changed", refresh);
+  }, []);
+
+  function buy(kind, id, price) {
+    const res = purchase({ kind, id, price });
+    if (!res.success) {
+      alert(res.message);
+      return;
+    }
+    // Сразу обновляем UI: замок → «Куплено», баланс
+    setWallet(getWallet());
+  }
+
+  function submitPromo(e) {
+    e.preventDefault();
+    const res = redeemPromoCode(promoInput);
+    setPromoMsg(res);
+    if (res.success) setPromoInput("");
+  }
+
+  const decorationList = wallet.isAdmin
+    ? [...DECORATIONS, ADMIN_DECORATION]
+    : DECORATIONS;
+
+  return (
+    <div className="max-w-6xl mx-auto py-6 space-y-8">
+      <div className="text-center">
+        <h1 className="text-3xl sm:text-4xl font-black text-[#d4af37] uppercase tracking-wider">
+          Магазин
+        </h1>
+        <p className="text-[#c5a059] mt-2">
+          Баланс:{" "}
+          <span className="text-[#f3e5ab] font-bold">
+            {wallet.balance.toLocaleString("ru-RU")}{" "}<img src="/mafio.png" alt="" className="inline h-5 w-5 object-contain align-[-2px] ml-0.5" />
+          </span>
+        </p>
+      </div>
+
+      <div className="flex flex-wrap justify-center gap-2">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`rounded-xl border px-4 py-2 text-sm font-bold uppercase tracking-wider transition ${
+              tab === t.id
+                ? "border-[#d4af37] bg-[#8b0000] text-[#f3e5ab]"
+                : "border-[#c5a059]/40 bg-[#120a07] text-[#c5a059] hover:border-[#d4af37]"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "roles" && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-5">
+          {roles.map((role) => {
+            const price = ROLE_PRICES[role.id] ?? 0;
+            // Берём статус из state кошелька, чтобы UI обновлялся сразу после покупки
+            const owned =
+              wallet.ownedRoles?.includes(role.id) || ownsRole(role.id);
+            return (
+              <div
+                key={role.id}
+                className="relative rounded-xl border border-[#c5a059]/40 bg-[#120a07] overflow-hidden"
+              >
+                {/* Замок только на картинке — не перекрывает кнопку покупки */}
+                <div className="relative h-40 w-full">
+                  <img
+                    src={role.image}
+                    alt={role.name}
+                    className={`h-full w-full object-cover ${
+                      owned ? "" : "opacity-40 grayscale"
+                    }`}
+                  />
+                  {!owned && (
+                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                      <span className="text-5xl drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]">
+                        🔒
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <div className="p-3 text-center space-y-2">
+                  <p className="font-bold text-[#f3e5ab]">{role.name}</p>
+                  {owned ? (
+                    <span className="text-xs text-emerald-400 uppercase tracking-wider">
+                      Куплено
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => buy("role", role.id, price)}
+                      className="w-full rounded-lg bg-[#d4af37] text-black font-bold py-1.5 text-sm hover:brightness-110"
+                    >
+                      {price}{" "}<img src="/mafio.png" alt="" className="inline h-4 w-4 object-contain align-[-2px]" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {tab === "emojis" && (
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-4">
+          {EMOJIS.map((emoji) => {
+            const owned =
+              wallet.ownedEmojis?.includes(emoji.id) || ownsEmoji(emoji.id);
+            return (
+              <div
+                key={emoji.id}
+                className="rounded-xl border border-[#c5a059]/40 bg-[#120a07] p-4 text-center space-y-2"
+              >
+                <div className="text-4xl">{emoji.symbol}</div>
+                {owned ? (
+                  <span className="text-xs text-emerald-400 uppercase tracking-wider">
+                    Куплено
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => buy("emoji", emoji.id, emoji.price)}
+                    className="w-full rounded-lg bg-[#d4af37] text-black font-bold py-1 text-xs hover:brightness-110"
+                  >
+                    {emoji.price}{" "}<img src="/mafio.png" alt="" className="inline h-4 w-4 object-contain align-[-2px]" />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {tab === "decor" && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+          {decorationList.map((d) => {
+            const owned =
+              wallet.ownedDecorations?.includes(d.id) ||
+              ownsDecoration(d.id) ||
+              d.price == null;
+            const equipped = wallet.equippedDecoration === d.id;
+            return (
+              <div
+                key={d.id}
+                className="rounded-xl border border-[#c5a059]/40 bg-[#120a07] p-3 text-center space-y-2"
+              >
+                <DecorationSVG
+                  kind={d.kind}
+                  colors={d.colors}
+                  className="h-16 w-full"
+                />
+                <p className="text-xs text-[#e6d5bc]">{d.name}</p>
+                {owned ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEquippedDecoration(equipped ? null : d.id)
+                    }
+                    className={`w-full rounded-lg py-1 text-xs font-bold ${
+                      equipped
+                        ? "bg-emerald-700 text-white"
+                        : "bg-[#d4af37] text-black hover:brightness-110"
+                    }`}
+                  >
+                    {equipped ? "Надето" : "Надеть"}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => buy("decoration", d.id, d.price)}
+                    className="w-full rounded-lg bg-[#d4af37] text-black font-bold py-1 text-xs hover:brightness-110"
+                  >
+                    {d.price}{" "}<img src="/mafio.png" alt="" className="inline h-4 w-4 object-contain align-[-2px]" />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {tab === "promo" && (
+        <form
+          onSubmit={submitPromo}
+          className="max-w-md mx-auto space-y-4 text-center"
+        >
+          <p className="text-[#c5a059]">
+            Введите промокод — сработает один раз на это устройство.
+          </p>
+          <input
+            value={promoInput}
+            onChange={(e) => setPromoInput(e.target.value)}
+            placeholder="Промокод"
+            className="w-full rounded-xl border border-[#c5a059]/40 bg-[#120a07] px-4 py-3 text-center text-[#f3e5ab] tracking-widest uppercase focus:border-[#d4af37] outline-none"
+          />
+          <button
+            type="submit"
+            className="w-full rounded-xl bg-gradient-to-r from-[#8b0000] to-[#5c0000] px-6 py-3 font-bold text-[#f3e5ab] border border-[#d4af37]"
+          >
+            Активировать
+          </button>
+          {promoMsg && (
+            <p
+              className={
+                promoMsg.success ? "text-emerald-400" : "text-red-400"
+              }
+            >
+              {promoMsg.message}
+            </p>
+          )}
+        </form>
+      )}
+    </div>
+  );
+}
