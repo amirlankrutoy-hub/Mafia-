@@ -24,7 +24,7 @@ export default function TopUpModal({ onClose, playerName }) {
       <div className="w-full max-w-2xl rounded-3xl border-2 border-[#d4af37] bg-gradient-to-b from-[#1c100b] via-[#120a07] to-[#080402] p-6 sm:p-8 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-2xl sm:text-3xl font-black text-[#d4af37] uppercase tracking-wide flex items-center gap-2">
-            <img src="/mafio.png" alt="" className="h-8 w-8 object-contain" />
+            <img src="/mafio.png" alt="" className="rounded-full h-[50px] w-[50px] object-contain" />
             Пополнение Мафио
           </h2>
           <button
