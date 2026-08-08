@@ -24,7 +24,11 @@ export default function TopUpModal({ onClose, playerName }) {
       <div className="w-full max-w-2xl rounded-3xl border-2 border-[#d4af37] bg-gradient-to-b from-[#1c100b] via-[#120a07] to-[#080402] p-6 sm:p-8 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-2xl sm:text-3xl font-black text-[#d4af37] uppercase tracking-wide flex items-center gap-2">
-            <img src="/mafio.png" alt="" className="rounded-full h-[50px] w-[50px] object-contain" />
+            <img
+              src="/mafio.png"
+              alt=""
+              className="w-[50px] h-[50px] rounded-full object-cover scale-[1.12]"
+            />
             Пополнение Мафио
           </h2>
           <button
@@ -56,11 +60,11 @@ export default function TopUpModal({ onClose, playerName }) {
                   <img
                     src={img}
                     alt={`${pkg.amount} Мафио`}
-                    className="h-24 w-24 sm:h-28 sm:w-28 object-contain rounded-xl"
+                    className="h-24 w-24 sm:h-28 sm:w-28 object-contain "
                   />
                   <div className="text-xl font-black text-[#f3e5ab] flex items-center gap-1.5">
                     {pkg.amount.toLocaleString("ru-RU")}
-                    <img src="/mafio.png" alt="M" className="h-5 w-5 object-contain" />
+                    <img src="/mafio.png" alt="M" className="h-5 w-5 rounded-full object-contain" />
                   </div>
                   <div className="mt-1">
                     {discount && (
@@ -82,12 +86,12 @@ export default function TopUpModal({ onClose, playerName }) {
               <img
                 src={PACKAGE_IMAGES[selected.id] || "/mafio.png"}
                 alt=""
-                className="h-28 w-28 object-contain rounded-xl"
+                className="h-28 w-28 object-contain rounded-full"
               />
               <p className="text-[#c5a059] text-sm">Вы выбрали</p>
               <p className="text-2xl font-black text-[#f3e5ab] flex items-center justify-center gap-2">
                 {selected.amount.toLocaleString("ru-RU")}
-                <img src="/mafio.png" alt="M" className="h-7 w-7 object-contain" />
+                <img src="/mafio.png" alt="M" className="h-7 w-7 object-contain rounded-full" />
                 <span className="text-[#d4af37]">— ${getPackagePrice(selected)}</span>
               </p>
             </div>
