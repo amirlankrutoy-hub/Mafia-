@@ -5,7 +5,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faArrowRight } from '@fortawesome/free-solid-svg-icons';
 import { ROLE_PRICES } from '../data/shopData';
 import { ownsRole } from '../services/wallet';
-import { isAdmin, tryUnlockAdmin } from '../services/admin';
+import { isAdmin, tryUnlockAdmin, getAdminRoleInfo, logoutAdmin, isRoleDisabled, getRoleDisableLabel } from '../services/admin';
 
 function Home({ userName }) {
   const navigate = useNavigate();
@@ -18,8 +18,10 @@ function Home({ userName }) {
   
 
   
-  // Фильтрация списка ролей
+  // Фильтрация списка ролей (скрываем навсегда удалённые)
   const filteredRoles = roles.filter((role) => {
+    const dis = isRoleDisabled(role.id);
+    if (dis && (!dis.until || dis.duration === 'permanent')) return false;
     if (activeCategory === 'all') return true;
     return role.category === activeCategory;
   });
@@ -190,14 +192,20 @@ function AdminFooter() {
   const [open, setOpen] = useState(false);
   const [password, setPassword] = useState('');
   const [msg, setMsg] = useState(null);
-  const [unlocked, setUnlocked] = useState(isAdmin());
+  const [roleInfo, setRoleInfo] = useState(getAdminRoleInfo());
 
   function submit(e) {
     e.preventDefault();
     const res = tryUnlockAdmin(password);
     setMsg(res);
     setPassword('');
-    if (res.success) setUnlocked(true);
+    if (res.success) setRoleInfo(res.role || getAdminRoleInfo());
+  }
+
+  function handleLogout() {
+    logoutAdmin();
+    setRoleInfo(null);
+    setMsg(null);
   }
 
   return (
@@ -215,17 +223,43 @@ function AdminFooter() {
           <div className="w-full max-w-sm rounded-2xl border-2 border-[#d4af37] bg-[#120a07] p-6 text-left">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-[#d4af37]">
-                {unlocked ? 'Панель администратора' : 'Вход для администратора'}
+                {roleInfo ? 'Панель администратора' : 'Вход для администратора'}
               </h3>
               <button onClick={() => setOpen(false)} className="text-[#c5a059]">✕</button>
             </div>
 
-            {unlocked ? (
-              <p className="text-emerald-400 text-sm">
-                Доступ открыт. Все роли, украшения, эмодзи и 100&nbsp;000 Мафио
-                уже на вашем аккаунте. Выдавать Мафио игрокам можно прямо в
-                лобби комнаты.
-              </p>
+            {roleInfo ? (
+              <div className="space-y-3">
+                <p className="text-sm">
+                  Вы вошли как{" "}
+                  <strong style={{ color: roleInfo.color }}>{roleInfo.label}</strong>
+                </p>
+                {roleInfo.id === "admin_support" && (
+                  <p className="text-green-300 text-sm">
+                    +3000 Мафио · Telegram:{" "}
+                    <a href="https://t.me/Amir4k_Nurmatov" target="_blank" rel="noreferrer" className="underline">
+                      @Amir4k_Nurmatov
+                    </a>
+                  </p>
+                )}
+                <p className="text-[#c5a059] text-xs">
+                  Бан игроков — только в лобби комнаты. Выдача Мафио — там же.
+                </p>
+                <Link
+                  to="/admin"
+                  onClick={() => setOpen(false)}
+                  className="block w-full text-center rounded-lg bg-[#d4af37] text-black font-bold py-2"
+                >
+                  Открыть панель
+                </Link>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="w-full rounded-lg border border-red-500/40 text-red-400 py-2 text-sm"
+                >
+                  Выйти
+                </button>
+              </div>
             ) : (
               <form onSubmit={submit} className="space-y-3">
                 <input

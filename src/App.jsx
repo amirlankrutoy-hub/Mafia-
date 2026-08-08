@@ -7,7 +7,7 @@ import OnlinePlay from './pages/OnlinePlay';
 import Rules from './pages/Rules';
 import Shop from './pages/Shop';
 import AdminPanel from './pages/AdminPanel';
-import { tryLoginAsAdminByName, isBanned, bumpSiteVisit } from './services/admin';
+import { isBanned, bumpSiteVisit } from './services/admin';
 import Navbar from './components/Navbar';
 import NotFound from './pages/NotFound';
 import NameModal from './components/NameModal';
@@ -106,7 +106,6 @@ function App() {
         const until = ban.until ? new Date(ban.until).toLocaleString("ru-RU") : "пока админ не разбанит";
         setTimeout(() => alert(`Вы забанены.\nПричина: ${ban.reason}\nДо: ${until}`), 100);
       } else {
-        tryLoginAsAdminByName(savedName);
         setUserName(savedName);
       }
     }
@@ -124,7 +123,6 @@ function App() {
       alert(`Вы забанены.\nПричина: ${ban.reason}\nДо: ${until}`);
       return;
     }
-    tryLoginAsAdminByName(name);
     localStorage.setItem('mafia_user_name', name);
     setUserName(name);
     setShowModal(false);
