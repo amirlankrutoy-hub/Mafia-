@@ -23,7 +23,7 @@ const io = new Server(server, {
         origin: [
             "http://localhost:5173",
             "https://mafia-tau-sand.vercel.app",
-            "https://mafia-play-n.vercel.app"   // ← добавь
+            "https://mafia-play-n.vercel.app"
         ],
         methods: ["GET", "POST"],
         credentials: true
