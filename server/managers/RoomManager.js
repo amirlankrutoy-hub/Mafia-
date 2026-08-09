@@ -60,11 +60,10 @@ class RoomManager {
             return { success: false, message: "Комната не найдена" };
         }
 
-        if (room.started) {
-            return { success: false, message: "Игра уже началась" };
-        }
-
-        // --- Мэр перезашёл после F5 ---
+        // --- Мэр перезашёл (F5 или обрыв сокета) — разрешаем ВСЕГДА,
+        // даже если игра уже началась, иначе после любого переподключения
+        // сервер перестаёт узнавать мэра и все его действия (в т.ч.
+        // "Играть снова") молча игнорируются.
         if (room.mayor && room.mayor.name === player.name) {
             room.mayor.id = socket.id;
             room.mayor.avatar = player.avatar || room.mayor.avatar;
@@ -76,7 +75,7 @@ class RoomManager {
         // --- Игрок уже есть по socket.id ---
         let existing = room.players.find(p => p.id === socket.id);
 
-        // --- Реконнект после F5: тот же ник ---
+        // --- Реконнект (F5 или обрыв сокета): тот же ник ---
         if (!existing) {
             existing = room.players.find(p => p.name === player.name);
         }
@@ -86,9 +85,14 @@ class RoomManager {
             existing.name = player.name || existing.name;
             existing.avatar = player.avatar || existing.avatar;
             existing.connected = true;
-            // ready не сбрасываем
+            // ready/role/alive не сбрасываем — это тот же игрок
             socket.join(roomCode);
             return { success: true, room };
+        }
+
+        // --- Совсем новый человек, а игра уже идёт — вот тут действительно нельзя ---
+        if (room.started) {
+            return { success: false, message: "Игра уже началась" };
         }
 
         // --- Новый игрок ---
@@ -130,6 +134,39 @@ class RoomManager {
 
         return rooms[code];
 
+    }
+
+    // Возврат комнаты к лобби после игры ("Играть снова" у мэра).
+    // Не трогает id/имя/аватар/decoration игроков — только игровое состояние.
+    resetForReplay(code) {
+        const room = rooms[code];
+        if (!room) return null;
+
+        room.phase = "lobby";
+        room.day = 0;
+        room.night = 0;
+        room.started = false;
+        room.winner = null;
+        room.selectedRoles = {};
+        room.votes = {};
+        room.actions = {};
+        room.logs = [];
+        room.nightActions = {};
+        room.blockedVotes = [];
+        room.voteCandidates = [];
+        room.voteRound = null;
+        room.pendingExecution = null;
+
+        room.players = room.players.map((p) => ({
+            ...p,
+            role: null,
+            alive: true,
+            ready: false,
+            readyForGame: false,
+            canVote: true
+        }));
+
+        return room;
     }
 
     getRoomBySocket(socketId) {

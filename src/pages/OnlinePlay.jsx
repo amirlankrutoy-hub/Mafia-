@@ -109,6 +109,40 @@ export default function OnlinePlay() {
 
     }, []);
 
+    // Молчаливый ре-джойн при переподключении сокета посреди сессии
+    // (не F5, а именно обрыв/восстановление соединения — например,
+    // вкладка была свёрнута). Без этого сервер после реконнекта не
+    // узнаёт мэра/игрока по новому socket.id, и его действия (в т.ч.
+    // "Играть снова") просто молча игнорируются.
+    useEffect(() => {
+        const resync = async () => {
+            const raw = localStorage.getItem("mafia_lobby");
+            if (!raw) return;
+
+            let session;
+            try {
+                session = JSON.parse(raw);
+            } catch {
+                return;
+            }
+            if (!session?.roomCode || !session?.playerName) return;
+
+            try {
+                await joinRoom(
+                    session.roomCode,
+                    session.playerName,
+                    session.avatar || "/avatars/avatar1.svg"
+                );
+                console.log("Реконнект: личность переподтверждена на сервере");
+            } catch (e) {
+                console.warn("Не удалось переподтвердить личность после реконнекта", e);
+            }
+        };
+
+        socket.on("connect", resync);
+        return () => socket.off("connect", resync);
+    }, []);
+
     // If page opened with ?autojoin=CODE, prefill join flow
     useEffect(() => {
         try {
@@ -242,6 +276,25 @@ export default function OnlinePlay() {
 
         socket.on("players-ready", handler);
         return () => socket.off("players-ready", handler);
+    }, []);
+
+    // Мэр нажал "Играть снова" — всех (мэра, живых и уже вышедших
+    // в лобби погибших игроков) возвращаем к чистому лобби этой комнаты
+    useEffect(() => {
+        const onGameReset = ({ players: freshPlayers }) => {
+            setInGame(false);
+            setPlayers(freshPlayers || []);
+            setPlayerReady(false);
+            setMyRole(null);
+            setShowRoulette(false);
+            setLoadingGame(false);
+            setShowPartySetup(false);
+            setLobbyConfiguring(false);
+            setWaitingMayor(false);
+        };
+
+        socket.on("game-reset", onGameReset);
+        return () => socket.off("game-reset", onGameReset);
     }, []);
 
     // Эмодзи над карточками игроков (пропадает через 3 секунды)

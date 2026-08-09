@@ -154,12 +154,22 @@ export function isAdminUnlocked() {
 }
 
 // Разовая выдача администратору: все роли, все эмодзи, все украшения,
-// 100 000 Мафио и эксклюзивные предметы (передаются отдельно, см. admin.js)
+// 100 000 Мафио и эксклюзивные предметы (передаются отдельно, см. admin.js).
+// Срабатывает только один раз — при повторном входе баланс и покупки
+// остаются ровно такими, какими были в прошлый раз, ничего не выдаётся
+// и не сбрасывается заново.
 export function grantAdminEverything(exclusiveDecorationId, exclusiveEmojiId) {
   const state = readState();
+
+  const alreadyGranted = state.isAdmin;
+
   state.isAdmin = true;
-  state.balance += 100000;
-  state.ownedRoles = Object.keys(ROLE_PRICES);
+  if (!alreadyGranted) {
+    state.balance += 100000;
+  }
+  state.ownedRoles = Array.from(
+    new Set([...state.ownedRoles, ...Object.keys(ROLE_PRICES)])
+  );
   state.ownedEmojis = Array.from(
     new Set([...state.ownedEmojis, ...EMOJIS.map((e) => e.id), exclusiveEmojiId])
   );

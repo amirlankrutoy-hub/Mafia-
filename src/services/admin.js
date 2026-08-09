@@ -126,12 +126,15 @@ export function tryUnlockAdmin(password) {
   }
 
   if (pwd === PASSWORDS["admin_$_support"]) {
+    const alreadySupport = getAdminRole() === "admin_support";
     setAdminRole("admin_support");
-    credit(3000);
+    if (!alreadySupport) credit(3000);
     return {
       success: true,
       role: ADMIN_ROLES["admin_$_support"],
-      message: "Вход как admin-support. +3000 Мафио"
+      message: alreadySupport
+        ? "Вход как admin-support"
+        : "Вход как admin-support. +3000 Мафио"
     };
   }
 

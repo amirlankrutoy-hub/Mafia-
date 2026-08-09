@@ -33,6 +33,7 @@ export default function GameRoom({
   const [readySent, setReadySent] = useState(false);
   const [dying, setDying] = useState(null);
   const [earnedReward, setEarnedReward] = useState(0);
+  const [playAgainState, setPlayAgainState] = useState("idle");
   const rewardGivenRef = useRef(false);
 
   useEffect(() => {
@@ -121,6 +122,44 @@ export default function GameRoom({
           <p className="mt-6 text-xl text-[#d4af37] font-bold">
             + {earnedReward} Мафио начислено на ваш счёт
           </p>
+        )}
+        {isMayor && (
+          <button
+            type="button"
+            disabled={playAgainState === "sending"}
+            onClick={() => {
+              setPlayAgainState("sending");
+              let answered = false;
+
+              socket.emit("play-again", roomCode, (res) => {
+                answered = true;
+                if (res?.success) {
+                  setPlayAgainState("idle");
+                } else {
+                  setPlayAgainState("idle");
+                  alert(
+                    res?.message ||
+                      "Не удалось начать игру заново. Попробуйте ещё раз."
+                  );
+                }
+              });
+
+              // Если сервер вообще не ответил за 5 секунд — значит
+              // событие даже не дошло (сервер не тот/не перезапущен/
+              // разрыв соединения), а не то что мэра не узнали.
+              setTimeout(() => {
+                if (!answered) {
+                  setPlayAgainState("idle");
+                  alert(
+                    "Сервер не ответил. Проверьте соединение или что бэкенд перезапущен с последним кодом."
+                  );
+                }
+              }, 5000);
+            }}
+            className="mt-10 rounded-xl bg-gradient-to-r from-[#8b0000] to-[#5c0000] border border-[#d4af37] px-10 py-4 text-xl font-bold text-[#f3e5ab] hover:brightness-125 disabled:opacity-50"
+          >
+            {playAgainState === "sending" ? "Отправка..." : "Играть снова"}
+          </button>
         )}
       </div>
     );

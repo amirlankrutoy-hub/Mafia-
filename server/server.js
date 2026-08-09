@@ -1206,6 +1206,57 @@ io.on("connection", (socket) => {
             winner: { side, label: side, reason }
         });
     });
+
+    // "Играть снова" — только мэр. Возвращает ВСЕХ (мэра, живых и уже
+    // погибших/вышедших в лобби игроков) к чистому лобби этой же комнаты.
+    socket.on("play-again", (roomCode, ack) => {
+        console.log(`[play-again] запрос от ${socket.id}, комната ${roomCode}`);
+
+        const room = RoomManager.getRoom(roomCode);
+        if (!room) {
+            console.log(`[play-again] комната ${roomCode} не найдена`);
+            if (typeof ack === "function") {
+                ack({ success: false, message: "Комната не найдена" });
+            }
+            return;
+        }
+
+        if (room.mayor?.id !== socket.id) {
+            console.log(
+                `[play-again] отклонено: сервер знает мэра как ${room.mayor?.id}, а запрос пришёл от ${socket.id}`
+            );
+            if (typeof ack === "function") {
+                ack({
+                    success: false,
+                    message: "Сервер не распознал вас как мэра этой комнаты"
+                });
+            }
+            return;
+        }
+
+        const fresh = RoomManager.resetForReplay(roomCode);
+        if (!fresh) {
+            if (typeof ack === "function") {
+                ack({ success: false, message: "Не удалось сбросить комнату" });
+            }
+            return;
+        }
+
+        const payload = fresh.players.map((p) => ({
+            id: p.id,
+            name: p.name,
+            avatar: p.avatar,
+            ready: false,
+            decoration: p.decoration || null
+        }));
+
+        io.to(roomCode).emit("game-reset", { players: payload });
+        console.log(`[play-again] комната ${roomCode} сброшена, разослано ${payload.length} игрокам`);
+
+        if (typeof ack === "function") {
+            ack({ success: true });
+        }
+    });
 });
 
 const PORT = process.env.PORT || 3001;
