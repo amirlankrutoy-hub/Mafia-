@@ -1,36 +1,73 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faVolumeHigh, faVolumeXmark, faBars, faXmark } from '@fortawesome/free-solid-svg-icons';
-import CurrencyBar from './shop/CurrencyBar';
+import {
+  faVolumeHigh,
+  faVolumeXmark,
+  faBars,
+  faXmark,
+  faHouse,
+  faBookOpen,
+  faDiceSix,
+  faStore,
+  faUserGroup,
+  faTrophy,
+  faIdCard,
+  faShieldHalved,
+  faRightFromBracket
+} from '@fortawesome/free-solid-svg-icons';
 import TopUpModal from './shop/TopUpModal';
 import { useMusic } from '../context/MusicContext';
 import { getAdminRoleInfo, logoutAdmin } from '../services/admin';
+import { getTeniBalance } from '../services/teniWallet';
+import { getBalance } from '../services/wallet';
+import TeniExchangeModal from './shop/TeniExchangeModal';
 
-const Navbar = ({ userName, onChangeName }) => {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
+const Navbar = ({ account }) => {
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [showTopUp, setShowTopUp] = useState(false);
+  const [showTeniExchange, setShowTeniExchange] = useState(false);
   const { menuMuted, toggleMenuMute, playMenu } = useMusic();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [adminRole, setAdminRole] = useState(getAdminRoleInfo());
+  const [teniBalance, setTeniBalance] = useState(getTeniBalance());
+  const [mafioBalance, setMafioBalance] = useState(getBalance());
+
+  useEffect(() => {
+    const refreshTeni = () => setTeniBalance(getTeniBalance());
+    window.addEventListener('mafia-teni-changed', refreshTeni);
+    window.addEventListener('mafia-achievements-changed', refreshTeni);
+    return () => {
+      window.removeEventListener('mafia-teni-changed', refreshTeni);
+      window.removeEventListener('mafia-achievements-changed', refreshTeni);
+    };
+  }, []);
+
+  useEffect(() => {
+    const refreshMafio = () => setMafioBalance(getBalance());
+    window.addEventListener('mafia-wallet-changed', refreshMafio);
+    return () => window.removeEventListener('mafia-wallet-changed', refreshMafio);
+  }, []);
 
   useEffect(() => {
     const refresh = () => setAdminRole(getAdminRoleInfo());
-    window.addEventListener("mafia-admin-changed", refresh);
-    return () => window.removeEventListener("mafia-admin-changed", refresh);
+    window.addEventListener('mafia-admin-changed', refresh);
+    return () => window.removeEventListener('mafia-admin-changed', refresh);
   }, []);
+
+  useEffect(() => {
+    setIsDrawerOpen(false);
+  }, [location.pathname]);
 
   const handleAdminLogout = () => {
     logoutAdmin();
     setAdminRole(null);
   };
 
-  const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
-
-  const goPlay = (e) => {
-    e.preventDefault();
-    setIsMenuOpen(false);
+  const goPlay = () => {
+    setIsDrawerOpen(false);
     sessionStorage.removeItem('mafia_story_seen');
     navigate('/online');
   };
@@ -42,221 +79,210 @@ const Navbar = ({ userName, onChangeName }) => {
     }
   };
 
-  const linkClass =
-    'rounded-lg bg-gradient-to-r from-[#8b0000] to-[#5c0000] px-3 sm:px-4 py-2 text-[10px] sm:text-xs font-bold uppercase tracking-widest text-[#f3e5ab] border border-[#d4af37] shadow-md transition-all hover:brightness-125 hover:shadow-[0_0_15px_rgba(212,175,55,0.4)]';
+  const menuItems = [
+    { id: 'home', label: 'Главная', icon: faHouse, to: '/' },
+    { id: 'rules', label: 'Правила', icon: faBookOpen, to: '/rules' },
+    { id: 'play', label: 'Играть', icon: faDiceSix, action: goPlay },
+    { id: 'roles', label: 'Роли', icon: faIdCard, to: '/roles' },
+    { id: 'shop', label: 'Магазин', icon: faStore, to: '/shop' },
+    { id: 'friends', label: 'Друзья', icon: faUserGroup, to: '/friends' },
+    { id: 'achievements', label: 'Достижения', icon: faTrophy, to: '/achievements' }
+  ];
 
-  const mobileLinkClass =
-    'block text-center rounded-lg bg-gradient-to-r from-[#8b0000] to-[#5c0000] py-2.5 text-xs font-bold uppercase tracking-widest text-[#f3e5ab] border border-[#d4af37]';
+  // Общее содержимое боковой панели — используется и в постоянном
+  // десктопном сайдбаре, и в выдвижном мобильном.
+  const SidebarContent = ({ onNavigate }) => (
+    <>
+      <div className="flex items-center gap-2 pb-4 border-b border-[#d4af37]/20">
+        <img className="w-9 h-9 rounded-full border border-[#d4af37]/50" src="/favicon.svg" alt="" />
+        <span className="font-black text-[#d4af37] uppercase tracking-widest text-sm">
+          Mafia Play
+        </span>
+      </div>
+
+      {/* Профиль */}
+      {account && (
+        <div className="mt-4 rounded-xl border border-[#d4af37]/30 bg-[#0d0705]/60 p-3">
+          <div className="text-[10px] uppercase tracking-widest text-[#c5a059]">
+            {adminRole ? (
+              <strong style={{ color: adminRole.color }}>{adminRole.label}</strong>
+            ) : (
+              'Игрок'
+            )}
+          </div>
+          <div className="text-base font-bold text-[#f3e5ab] truncate">{account.name}</div>
+          <div className="text-[11px] text-[#c5a059] mt-0.5">
+            ID: <span className="font-mono text-[#d4af37]">{account.id}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Валюта */}
+      <div className="mt-3 space-y-2">
+        <button
+          type="button"
+          onClick={() => setShowTopUp(true)}
+          className="w-full flex items-center justify-between rounded-xl border border-[#d4af37]/30 bg-[#180e0a] px-3 py-2"
+        >
+          <span className="flex items-center gap-2 text-sm font-bold text-[#f3e5ab]">
+            <img src="/mafio.png" alt="" className="w-6 h-6" />
+            {mafioBalance.toLocaleString('ru-RU')}
+          </span>
+          <span className="h-5 w-5 rounded-full bg-[#d4af37] text-black text-xs font-black flex items-center justify-center">
+            +
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setShowTeniExchange(true)}
+          className="w-full flex items-center justify-between rounded-xl border border-[#d4af37]/30 bg-[#180e0a] px-3 py-2"
+        >
+          <span className="flex items-center gap-2 text-sm font-bold text-[#f3e5ab]">
+            <img src="/teni.png" alt="" className="w-7 h-7 rounded-full" />
+            {teniBalance}
+          </span>
+          <span className="h-5 w-5 rounded-full bg-[#d4af37] text-black text-xs font-black flex items-center justify-center">
+            +
+          </span>
+        </button>
+
+        <button
+          onClick={handleMusicClick}
+          className="w-full rounded-xl border border-[#d4af37]/30 bg-[#180e0a] px-3 py-2 flex items-center justify-between"
+        >
+          <span className="flex items-center gap-2 text-[#f3e5ab] font-bold text-sm">
+            <FontAwesomeIcon icon={menuMuted ? faVolumeXmark : faVolumeHigh} className="text-[#d4af37]" />
+            Музыка
+          </span>
+          <span className={`text-xs font-bold ${menuMuted ? 'text-red-400' : 'text-green-400'}`}>
+            ● {menuMuted ? 'Выкл' : 'Вкл'}
+          </span>
+        </button>
+      </div>
+
+      <nav className="flex-1 my-4 space-y-1.5">
+        {menuItems.map((item) =>
+          item.action ? (
+            <button
+              key={item.id}
+              type="button"
+              onClick={item.action}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold uppercase tracking-wide text-xs text-[#e6d5bc] bg-gradient-to-r from-[#8b0000]/60 to-[#5c0000]/60 border border-[#d4af37]/30 hover:brightness-125 transition"
+            >
+              <FontAwesomeIcon icon={item.icon} className="text-[#d4af37]" />
+              {item.label}
+            </button>
+          ) : (
+            <Link
+              key={item.id}
+              to={item.to}
+              onClick={onNavigate}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold uppercase tracking-wide text-xs transition ${
+                location.pathname === item.to
+                  ? 'bg-[#d4af37]/15 text-[#d4af37] border border-[#d4af37]/40'
+                  : 'text-[#c5a059] hover:bg-[#d4af37]/10 hover:text-[#f3e5ab] border border-transparent'
+              }`}
+            >
+              <FontAwesomeIcon icon={item.icon} />
+              {item.label}
+            </Link>
+          )
+        )}
+
+        {adminRole && (
+          <Link
+            to="/admin"
+            onClick={onNavigate}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold uppercase tracking-wide text-xs text-[#d4af37] border border-[#d4af37]/40 hover:bg-[#d4af37]/10 transition"
+          >
+            <FontAwesomeIcon icon={faShieldHalved} />
+            Админ-панель
+          </Link>
+        )}
+      </nav>
+
+      {adminRole && (
+        <button
+          onClick={handleAdminLogout}
+          className="w-full flex items-center justify-center gap-2 rounded-lg border border-red-500/40 py-2 text-[11px] uppercase font-bold text-red-400 hover:bg-red-500/10 transition"
+        >
+          <FontAwesomeIcon icon={faRightFromBracket} />
+          Выйти из админки
+        </button>
+      )}
+
+      <div className="pt-4 mt-4 border-t border-[#d4af37]/20 text-[10px] text-[#6b5636] text-center">
+        Mafia Play
+      </div>
+    </>
+  );
 
   return (
     <>
-      <nav className="border-b border-[#d4af37]/30 bg-[#140b07]/95 shadow-[0_4px_20px_rgba(0,0,0,0.8)] backdrop-blur-md sticky top-0 z-40 relative" >
-        <div className="container mx-auto px-3 sm:px-6 py-2 sm:py-3">
-          <div className="flex items-center justify-between gap-2">
-            <Link
-              to="/"
-              className="group flex items-center gap-2 shrink-0"
-              onClick={() => setIsMenuOpen(false)}
+      {/* ---------------- ПОСТОЯННЫЙ САЙДБАР (десктоп) ---------------- */}
+      <aside className="hidden lg:flex lg:fixed lg:inset-y-0 lg:left-0 lg:z-40 lg:w-64 lg:flex-col lg:p-5 bg-gradient-to-b from-[#1c100b] via-[#140b07] to-[#0a0503] border-r-2 border-[#d4af37]/40 overflow-y-auto">
+        <SidebarContent onNavigate={() => {}} />
+      </aside>
+
+      {/* ---------------- МОБИЛЬНАЯ ВЕРХНЯЯ ПАНЕЛЬ ---------------- */}
+      <nav className="lg:hidden border-b border-[#d4af37]/30 bg-[#140b07]/95 shadow-[0_4px_20px_rgba(0,0,0,0.8)] backdrop-blur-md sticky top-0 z-40">
+        <div className="px-3 py-2 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsDrawerOpen(true)}
+              aria-label="Открыть меню"
+              className="h-10 w-10 rounded-lg border border-[#d4af37]/50 text-[#d4af37] flex items-center justify-center hover:bg-[#d4af37]/10 active:scale-95 transition"
             >
-              <div className="absolute left-0">
-                <img className="w-8 h-8 sm:w-10 sm:h-10 md:w-[50px] md:h-[50px]" src="/favicon.svg" alt="Mafia Play" />
-              </div>
+              <FontAwesomeIcon icon={faBars} size="lg" />
+            </button>
+            <Link to="/" className="flex items-center gap-2 shrink-0">
+              <img className="w-8 h-8 rounded-full" src="/favicon.svg" alt="Mafia Play" />
             </Link>
-
-            <div className="hidden md:flex items-center gap-3 lg:gap-5">
-              <Link to="/" className={linkClass}>Главная</Link>
-              <Link to="/rules" className={linkClass}>Правила</Link>
-              <button type="button" onClick={goPlay} className={linkClass}>Играть</button>
-              <Link to="/shop" className={linkClass}>Магазин</Link>
-
-              <button
-                type="button"
-                onClick={handleMusicClick}
-                title={menuMuted ? 'Включить музыку' : 'Выключить музыку'}
-                aria-label={menuMuted ? 'Включить музыку' : 'Выключить музыку'}
-                className={`h-10 w-10 rounded-full border-2 flex items-center justify-center transition ${menuMuted
-                    ? 'border-zinc-600 bg-zinc-900 text-zinc-400'
-                    : 'border-[#d4af37] bg-[#1c100b] text-[#d4af37] shadow-[0_0_12px_rgba(212,175,55,0.35)]'
-                  }`}
-              >
-                <FontAwesomeIcon icon={menuMuted ? faVolumeXmark : faVolumeHigh} />
-              </button>
-
-              <CurrencyBar onOpenTopUp={() => setShowTopUp(true)} />
-
-              {userName && (
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-[#c5a059]">
-                    {adminRole ? (
-                      <strong style={{ color: adminRole.color }}>{adminRole.label}</strong>
-                    ) : (
-                      <strong className="text-[#d4af37]">{userName}</strong>
-                    )}
-                  </span>
-                  {adminRole ? (
-                    <>
-                      <Link
-                        to="/admin"
-                        className="rounded border border-[#d4af37]/50 px-2 py-1 text-[10px] uppercase text-[#d4af37]"
-                      >
-                        Панель
-                      </Link>
-                      <button
-                        onClick={handleAdminLogout}
-                        className="rounded border border-red-500/40 px-2 py-1 text-[10px] uppercase text-red-400"
-                      >
-                        Выйти
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      onClick={onChangeName}
-                      className="rounded border border-[#c5a059]/30 bg-[#180e0a] px-2 py-1 text-[10px] uppercase text-[#c5a059]"
-                    >
-                      Сменить
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="flex md:hidden items-center gap-2">
-
-              <CurrencyBar onOpenTopUp={() => setShowTopUp(true)} />
-
-              <button
-                type="button"
-                onClick={toggleMenu}
-                className="h-9 w-9 rounded-lg border border-[#d4af37]/50 text-[#d4af37] flex items-center justify-center"
-                aria-label="Меню"
-              >
-                <FontAwesomeIcon icon={isMenuOpen ? faXmark : faBars} />
-              </button>
-
-            </div>
           </div>
 
-          {isMenuOpen && (
-            <div className="md:hidden mt-3 space-y-3 pb-3">
-
-              {/* Музыка */}
-              <button
-                onClick={handleMusicClick}
-                className="w-full rounded-xl border border-[#d4af37]/30 bg-[#180e0a] p-4 flex justify-between items-center"
-              >
-                <div className="flex items-center gap-3">
-                  <FontAwesomeIcon
-                    icon={menuMuted ? faVolumeXmark : faVolumeHigh}
-                    className="text-[#d4af37]"
-                  />
-                  <span className="text-[#f3e5ab] font-bold">
-                    Музыка лобби
-                  </span>
-                </div>
-
-                <span
-                  className={`font-bold ${menuMuted
-                      ? "text-red-400"
-                      : "text-green-400"
-                    }`}
-                >
-                  ● {menuMuted ? "Выключена" : "Включена"}
-                </span>
-              </button>
-
-              {/* Валюта */}
-
-              <div className="rounded-xl border border-[#d4af37]/30 bg-[#180e0a] p-4">
-                <div className="text-[#f3e5ab] font-bold mb-2">
-                  💰 Мафио
-                </div>
-
-                <CurrencyBar onOpenTopUp={() => setShowTopUp(true)} />
-              </div>
-
-              <Link
-                to="/"
-                onClick={() => setIsMenuOpen(false)}
-                className={mobileLinkClass}
-              >
-                🏠 Главная
-              </Link>
-
-              <Link
-                to="/rules"
-                onClick={() => setIsMenuOpen(false)}
-                className={mobileLinkClass}
-              >
-                📖 Правила
-              </Link>
-
-              <button
-                type="button"
-                onClick={goPlay}
-                className={`w-full ${mobileLinkClass}`}
-              >
-                🎮 Играть
-              </button>
-
-              <Link
-                to="/shop"
-                onClick={() => setIsMenuOpen(false)}
-                className={mobileLinkClass}
-              >
-                🛒 Магазин
-              </Link>
-
-              {userName && (
-                <div className="flex flex-col gap-2 pt-3 border-t border-[#d4af37]/20">
-                  <span className="text-xs text-[#c5a059]">
-                    {adminRole ? (
-                      <>Роль: <strong style={{ color: adminRole.color }}>{adminRole.label}</strong></>
-                    ) : (
-                      <>Игрок: <strong className="text-[#d4af37]">{userName}</strong></>
-                    )}
-                  </span>
-                  <div className="flex gap-2">
-                    {adminRole ? (
-                      <>
-                        <Link
-                          to="/admin"
-                          onClick={() => setIsMenuOpen(false)}
-                          className="rounded border border-[#d4af37]/50 px-3 py-1 text-[10px] uppercase text-[#d4af37]"
-                        >
-                          Панель
-                        </Link>
-                        <button
-                          onClick={() => {
-                            setIsMenuOpen(false);
-                            handleAdminLogout();
-                          }}
-                          className="rounded border border-red-500/40 px-3 py-1 text-[10px] uppercase text-red-400"
-                        >
-                          Выйти
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        onClick={() => {
-                          setIsMenuOpen(false);
-                          onChangeName();
-                        }}
-                        className="rounded border border-[#c5a059]/30 bg-[#180e0a] px-3 py-1 text-[10px] uppercase tracking-wider text-[#c5a059]"
-                      >
-                        Сменить имя
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 rounded-full border border-[#d4af37]/40 bg-[#140b07] px-2 py-1">
+              <img src="/mafio.png" alt="" className="w-5 h-5" />
+              <span className="text-xs font-bold text-[#f3e5ab]">{mafioBalance}</span>
             </div>
-          )}
+            <div className="flex items-center gap-1 rounded-full border border-[#d4af37]/40 bg-[#140b07] px-2 py-1">
+              <img src="/teni.png" alt="" className="w-5 h-5 rounded-full" />
+              <span className="text-xs font-bold text-[#d4af37]">{teniBalance}</span>
+            </div>
+          </div>
         </div>
       </nav>
 
+      {/* ---------------- ВЫДВИЖНОЙ САЙДБАР (мобайл) ---------------- */}
+      {isDrawerOpen && (
+        <div className="fixed inset-0 z-50 flex lg:hidden">
+          <div
+            onClick={() => setIsDrawerOpen(false)}
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm"
+          />
+          <div className="relative w-[280px] max-w-[82vw] h-full bg-gradient-to-b from-[#1c100b] via-[#140b07] to-[#0a0503] border-r-2 border-[#d4af37]/40 p-5 flex flex-col z-10 shadow-[0_0_40px_rgba(0,0,0,0.9)] overflow-y-auto">
+            <div className="flex justify-end -mt-1 -mr-1">
+              <button
+                onClick={() => setIsDrawerOpen(false)}
+                className="p-1 rounded-lg text-[#c5a059] hover:bg-[#d4af37]/10"
+                aria-label="Закрыть меню"
+              >
+                <FontAwesomeIcon icon={faXmark} size="lg" />
+              </button>
+            </div>
+            <SidebarContent onNavigate={() => setIsDrawerOpen(false)} />
+          </div>
+        </div>
+      )}
+
       {showTopUp && (
-        <TopUpModal onClose={() => setShowTopUp(false)} playerName={userName} />
+        <TopUpModal onClose={() => setShowTopUp(false)} playerName={account?.name} />
+      )}
+
+      {showTeniExchange && (
+        <TeniExchangeModal onClose={() => setShowTeniExchange(false)} />
       )}
     </>
   );

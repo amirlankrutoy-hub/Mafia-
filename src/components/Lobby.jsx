@@ -5,12 +5,15 @@ import {
   faVolumeHigh,
   faVolumeXmark,
   faChevronDown,
-  faChevronUp
+  faChevronUp,
+  faUserPlus,
+  faCheck
 } from "@fortawesome/free-solid-svg-icons";
 import { EMOJIS, DECORATIONS, ADMIN_DECORATION } from "../data/shopData";
 import { ownsEmoji } from "../services/wallet";
 import { useMusic } from "../context/MusicContext";
 import DecorationSVG from "./shop/DecorationSVG";
+import { addFriend, isFriend } from "../services/friends";
 
 const ALL_DECORATIONS = [...DECORATIONS, ADMIN_DECORATION];
 
@@ -28,7 +31,8 @@ export default function Lobby({
   emojiMap = {},
   onSendEmoji,
   isAdminViewer,
-  onAdminGive
+  onAdminGive,
+  myAccountId
 }) {
   const guestPlayers = players.filter((p) => !p.isMayor);
   const readyCount = guestPlayers.filter((p) => p.ready).length;
@@ -36,6 +40,7 @@ export default function Lobby({
   const ownedEmojis = EMOJIS.filter((e) => ownsEmoji(e.id));
 
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [friendVersion, setFriendVersion] = useState(0);
   const { lobbyMuted, toggleLobbyMute, playLobby, stopLobby } = useMusic();
 
   // Cowboy-тема в лобби
@@ -196,6 +201,24 @@ export default function Lobby({
                       </p>
                     </div>
                   </div>
+                  {p.accountId && p.accountId !== myAccountId && (
+                    isFriend(p.accountId) ? (
+                      <span className="mt-1 w-full flex items-center justify-center gap-1.5 text-emerald-400 text-[11px] font-bold py-1">
+                        <FontAwesomeIcon icon={faCheck} /> В друзьях
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          addFriend({ id: p.accountId, name: p.name });
+                          setFriendVersion((v) => v + 1);
+                        }}
+                        className="mt-1 w-full flex items-center justify-center gap-1.5 bg-[#180e0a] border border-[#d4af37]/50 text-[#d4af37] py-1.5 rounded-lg text-xs font-bold"
+                      >
+                        <FontAwesomeIcon icon={faUserPlus} /> Добавить в друзья
+                      </button>
+                    )
+                  )}
                   {isMayor && (
                     <button
                       type="button"

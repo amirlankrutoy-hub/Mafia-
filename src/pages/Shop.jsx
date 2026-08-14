@@ -16,11 +16,15 @@ import {
   redeemPromoCode
 } from "../services/wallet";
 import DecorationSVG from "../components/shop/DecorationSVG";
+import ABILITIES from "../data/abilities";
+import { getOwnedAbilities, buyAbility } from "../services/abilitiesShop";
+import { getTeniBalance } from "../services/teniWallet";
 
 const TABS = [
   { id: "roles", label: "Роли" },
   { id: "emojis", label: "Эмодзи" },
   { id: "decor", label: "Украшения" },
+  { id: "abilities", label: "Способности" },
   { id: "promo", label: "Промокод" }
 ];
 
@@ -29,12 +33,37 @@ export default function Shop() {
   const [wallet, setWallet] = useState(getWallet());
   const [promoInput, setPromoInput] = useState("");
   const [promoMsg, setPromoMsg] = useState(null);
+  const [owned, setOwned] = useState(getOwnedAbilities());
+  const [teni, setTeni] = useState(getTeniBalance());
 
   useEffect(() => {
     const refresh = () => setWallet(getWallet());
     window.addEventListener("mafia-wallet-changed", refresh);
     return () => window.removeEventListener("mafia-wallet-changed", refresh);
   }, []);
+
+  useEffect(() => {
+    const refreshAbilities = () => {
+      setOwned(getOwnedAbilities());
+      setTeni(getTeniBalance());
+    };
+    window.addEventListener("mafia-abilities-changed", refreshAbilities);
+    window.addEventListener("mafia-teni-changed", refreshAbilities);
+    return () => {
+      window.removeEventListener("mafia-abilities-changed", refreshAbilities);
+      window.removeEventListener("mafia-teni-changed", refreshAbilities);
+    };
+  }, []);
+
+  function buyAbilityItem(id) {
+    const res = buyAbility(id);
+    if (!res.success) {
+      alert(res.message);
+      return;
+    }
+    setOwned(getOwnedAbilities());
+    setTeni(getTeniBalance());
+  }
 
   function buy(kind, id, price) {
     const res = purchase({ kind, id, price });
@@ -213,6 +242,53 @@ export default function Shop() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {tab === "abilities" && (
+        <div>
+          <p className="text-center text-[#c5a059] mb-5">
+            Баланс:{" "}
+            <span className="text-[#f3e5ab] font-bold">
+              {teni}{" "}
+              <img src="/teni.png" alt="" className="inline h-5 w-5 object-contain align-[-2px] ml-0.5" />
+            </span>
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
+            {ABILITIES.map((a) => (
+              <div
+                key={a.id}
+                className="rounded-xl border border-[#c5a059]/40 bg-[#120a07] p-4 flex flex-col gap-2"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold text-[#f3e5ab]">{a.name}</span>
+                  <span
+                    className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${
+                      a.type === "day"
+                        ? "border-amber-500/50 text-amber-300"
+                        : "border-indigo-500/50 text-indigo-300"
+                    }`}
+                  >
+                    {a.type === "day" ? "День" : "Ночь"}
+                  </span>
+                </div>
+                <p className="text-xs text-[#8b6b12] leading-snug flex-1">{a.description}</p>
+                <div className="flex items-center justify-between mt-1">
+                  <span className="text-[11px] text-[#c5a059]">
+                    В запасе: <strong className="text-[#f3e5ab]">{owned[a.id] || 0}</strong>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => buyAbilityItem(a.id)}
+                    disabled={teni < a.price}
+                    className="rounded-lg bg-gradient-to-r from-[#8b0000] to-[#5c0000] px-3 py-1.5 text-xs font-bold text-[#f3e5ab] border border-[#d4af37]/60 disabled:opacity-40"
+                  >
+                    {a.price} <img src="/teni.png" alt="" className="inline h-4 w-4 align-[-2px]" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

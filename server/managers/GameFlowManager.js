@@ -238,6 +238,7 @@ class GameFlowManager {
     const healed = new Set(
       (room.nightActions.doctor || []).map((a) => a.targetId)
     );
+    (room.abilityEffects?.nightImmune || []).forEach((id) => healed.add(id));
 
     Object.keys(killVotes).forEach((tid) => {
       const target = room.players.find((p) => p.id === tid);
@@ -364,6 +365,10 @@ class GameFlowManager {
       return { success: false, message: "Недопустимая цель" };
     }
 
+    if ((room.abilityEffects?.voteImmune || []).includes(targetId)) {
+      return { success: false, message: "За этого игрока нельзя голосовать в этом раунде" };
+    }
+
     room.votes[socketId] = targetId;
     return { success: true, votes: room.votes };
   }
@@ -371,8 +376,11 @@ class GameFlowManager {
   tallyVotes(room) {
     const counts = {};
     room.voteCandidates.forEach((id) => (counts[id] = 0));
-    Object.values(room.votes).forEach((tid) => {
-      if (tid != null && counts[tid] != null) counts[tid] += 1;
+    const weights = room.abilityEffects?.extraVoteWeight || {};
+    Object.entries(room.votes).forEach(([voterId, tid]) => {
+      if (tid != null && counts[tid] != null) {
+        counts[tid] += weights[voterId] || 1;
+      }
     });
     return counts;
   }

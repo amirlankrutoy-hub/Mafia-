@@ -3,8 +3,7 @@ import { useEffect, useState } from "react";
 import Lobby from "../components/Lobby";
 import PartySetup from "../components/PartySetup";
 import RoleRoulette from "../components/RoleRoulette";
-import NameModal from "../components/NameModal";
-import AvatarPicker from "../components/AvatarPicker";
+import RoomCodeModal from "../components/RoomCodeModal";
 import GameRoom from "./game/GameRoom";
 
 import {
@@ -25,9 +24,16 @@ import { EMOJIS } from "../data/shopData";
 import { credit, getEquippedDecoration, ownsEmoji } from "../services/wallet";
 import { isAdmin } from "../services/admin";
 import LoadingSpinner from '../components/LoadingSpinner';
+import { announcePresence, onIncomingFriendRequest, respondToFriendRequest } from "../services/presence";
+import { noteRecentPlayers } from "../services/friends";
+import { recordEvent } from "../services/achievementsService";
+import { getSelectedAvatar } from "../services/profile";
+
+const ADMIN_ACCOUNT_IDS = ["777777", "1111111"];
 
 
-export default function OnlinePlay() {
+export default function OnlinePlay({ account }) {
+    const [incomingRequest, setIncomingRequest] = useState(null);
 
     // -------------------------
     // ЭКРАН
@@ -98,6 +104,7 @@ export default function OnlinePlay() {
         socket.on("connect", () => {
 
             console.log("Socket:", socket.id);
+            if (account) announcePresence(account.id, account.name);
 
         });
 
@@ -107,7 +114,39 @@ export default function OnlinePlay() {
 
         };
 
+    }, [account]);
+
+    // Заявки друзей на вход (только у мэра)
+    useEffect(() => {
+        const off = onIncomingFriendRequest((req) => {
+            setIncomingRequest(req);
+        });
+        return off;
     }, []);
+
+    const respondIncoming = (accepted) => {
+        if (!incomingRequest) return;
+        respondToFriendRequest({
+            roomCode: incomingRequest.roomCode,
+            requesterSocketId: incomingRequest.requesterSocketId,
+            accepted
+        });
+        setIncomingRequest(null);
+    };
+
+    // Запоминаем недавних сокомнатников + встреча с админом
+    useEffect(() => {
+        if (!account || !players?.length) return;
+        const withAccounts = players
+            .filter((p) => p.accountId)
+            .map((p) => ({ id: p.accountId, name: p.name }));
+        noteRecentPlayers(withAccounts, account.id);
+
+        const metAdmin = players.some(
+            (p) => p.accountId && p.accountId !== account.id && ADMIN_ACCOUNT_IDS.includes(p.accountId)
+        );
+        if (metAdmin) recordEvent("met_admin");
+    }, [players, account]);
 
     // Молчаливый ре-джойн при переподключении сокета посреди сессии
     // (не F5, а именно обрыв/восстановление соединения — например,
@@ -131,7 +170,8 @@ export default function OnlinePlay() {
                 await joinRoom(
                     session.roomCode,
                     session.playerName,
-                    session.avatar || "/avatars/avatar1.svg"
+                    session.avatar || "/avatars/avatar1.svg",
+                    account?.id
                 );
                 console.log("Реконнект: личность переподтверждена на сервере");
             } catch (e) {
@@ -206,7 +246,8 @@ export default function OnlinePlay() {
             const response = await joinRoom(
                 session.roomCode,
                 session.playerName,
-                session.avatar || "/avatars/avatar1.svg"
+                session.avatar || "/avatars/avatar1.svg",
+                account?.id
             );
 
             if (!response?.success) {
@@ -343,6 +384,7 @@ export default function OnlinePlay() {
     function sendEmoji(emojiId) {
         if (!roomCode) return;
         socket.emit("send-emoji", roomCode, emojiId);
+        recordEvent("emoji_sent");
     }
 
     function adminGiveCurrency(targetId, amount) {
@@ -374,6 +416,7 @@ export default function OnlinePlay() {
             setLoadingStart(false);
             setLoadingGame(true);
             setShowRoulette(false);
+            recordEvent("role_played", { role });
 
         });
 
@@ -463,94 +506,60 @@ export default function OnlinePlay() {
     // СОЗДАТЬ КОМНАТУ
     // ==========================
 
-    const handleCreate = () => {
+    // ==========================
+    // СОЗДАТЬ КОМНАТУ (сразу с именем/аватаром/украшением из аккаунта)
+    // ==========================
 
+    const handleCreate = async () => {
         setAction("create");
-
-        setView("name");
-
-    };
-
-    // ==========================
-    // ВОЙТИ В КОМНАТУ
-    // ==========================
-
-    const handleJoin = () => {
-
-        setAction("join");
-
-        setView("code");
-
-    };
-
-    // ==========================
-    // СОХРАНИТЬ КОД КОМНАТЫ
-    // ==========================
-
-    const handleSaveCode = (code) => {
-
-        setJoinCode(code.toUpperCase());
-
-        setView("name");
-
-    };
-
-    // ==========================
-    // СОХРАНИТЬ ИМЯ
-    // ==========================
-
-    const handleSaveName = (name) => {
-
+        const avatar = getSelectedAvatar();
+        const name = account?.name || playerName || "Игрок";
         setPlayerName(name);
-
-        setView("avatar");
-
-    };
-
-    // ==========================
-    // ВЫБОР АВАТАРА
-    // ==========================
-
-    const handleAvatarSelect = async (avatar) => {
-        console.log("handleAvatarSelect старт, avatar =", avatar);
-
         setPlayerAvatar(avatar);
 
-        // ---------- СОЗДАТЬ ----------
-        if (action === "create") {
-            const response = await createRoom(playerName, avatar);
-            console.log("createRoom ответ:", response);
+        const response = await createRoom(name, avatar, account?.id);
 
-            if (!response || !response.success) {
-                alert("Не удалось создать комнату");
-                setView("menu");
-                return;
-            }
-
-            setRoomCode(response.roomCode);
-            setPlayers(response.players || []);
-            setMayor(response.mayor || null);
-            setView("lobby");
-
-            const session = {
-                roomCode: response.roomCode,
-                playerName,
-                avatar,
-                isMayor: action === "create",
-                action
-            };
-            localStorage.setItem("mafia_lobby", JSON.stringify(session));
+        if (!response || !response.success) {
+            alert(response?.message || "Не удалось создать комнату");
+            setView("menu");
             return;
         }
 
-        // ---------- ВОЙТИ ----------
-        const response = await joinRoom(joinCode, playerName, avatar);
-        console.log("joinRoom ответ:", response);
-        setPlayers(
-            (response.players || []).filter(
-                (p, i, arr) => arr.findIndex(x => x.id === p.id) === i
-            )
+        setRoomCode(response.roomCode);
+        setPlayers(response.players || []);
+        setMayor(response.mayor || null);
+        setView("lobby");
+        recordEvent("room_created");
+
+        localStorage.setItem(
+            "mafia_lobby",
+            JSON.stringify({ roomCode: response.roomCode, playerName: name, avatar, isMayor: true, action: "create" })
         );
+    };
+
+    // ==========================
+    // ВОЙТИ В КОМНАТУ (спрашиваем только код)
+    // ==========================
+
+    const handleJoin = () => {
+        setAction("join");
+        setView("code");
+    };
+
+    // ==========================
+    // ПОДТВЕРДИТЬ КОД И ВОЙТИ
+    // ==========================
+
+    const handleSaveCode = async (code) => {
+        const roomCodeInput = code.toUpperCase();
+        setJoinCode(roomCodeInput);
+
+        const avatar = getSelectedAvatar();
+        const name = account?.name || playerName || "Игрок";
+        setPlayerName(name);
+        setPlayerAvatar(avatar);
+
+        const response = await joinRoom(roomCodeInput, name, avatar, account?.id);
 
         if (!response || !response.success) {
             alert(response?.message || "Не удалось войти в комнату");
@@ -558,19 +567,20 @@ export default function OnlinePlay() {
             return;
         }
 
+        setPlayers(
+            (response.players || []).filter(
+                (p, i, arr) => arr.findIndex((x) => x.id === p.id) === i
+            )
+        );
         setRoomCode(response.roomCode);
-        setPlayers(response.players || []);
-        setMayor(response.mayor || null);   // если сервер отдаёт mayor
+        setMayor(response.mayor || null);
         setView("lobby");
+        recordEvent("room_joined");
 
-        const session = {
-            roomCode: response.roomCode,
-            playerName,
-            avatar,
-            isMayor: false,
-            action
-        };
-        localStorage.setItem("mafia_lobby", JSON.stringify(session));
+        localStorage.setItem(
+            "mafia_lobby",
+            JSON.stringify({ roomCode: response.roomCode, playerName: name, avatar, isMayor: false, action: "join" })
+        );
     };
 
     // ==========================
@@ -750,6 +760,31 @@ export default function OnlinePlay() {
 
         <>
 
+            {/* ---------------- ЗАЯВКА ДРУГА НА ВХОД (у мэра) ---------------- */}
+            {incomingRequest && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+                    <div className="w-full max-w-sm rounded-2xl border-2 border-[#d4af37] bg-gradient-to-b from-[#1c100b] to-[#080402] p-6 text-center shadow-[0_0_40px_rgba(212,175,55,0.3)]">
+                        <p className="text-[#f3e5ab] text-base font-bold">
+                            «{incomingRequest.requesterName}» хочет вступить в комнату
+                        </p>
+                        <div className="mt-5 flex gap-3 justify-center">
+                            <button
+                                onClick={() => respondIncoming(true)}
+                                className="flex-1 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-bold py-2.5 uppercase text-sm"
+                            >
+                                Да
+                            </button>
+                            <button
+                                onClick={() => respondIncoming(false)}
+                                className="flex-1 rounded-lg bg-red-800 hover:bg-red-700 text-white font-bold py-2.5 uppercase text-sm"
+                            >
+                                Нет
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* ---------------- ГЛАВНОЕ МЕНЮ ---------------- */}
 
             {view === "menu" && (
@@ -757,7 +792,7 @@ export default function OnlinePlay() {
                 <div className="min-h-screen bg-black flex flex-col items-center pt-32 gap-8">
 
                     <h1 className="text-6xl font-bold text-yellow-500">
-                        MAFIA
+                        MAFIA PLAY
                     </h1>
 
                     <button
@@ -782,41 +817,9 @@ export default function OnlinePlay() {
 
             {view === "code" && (
 
-                <NameModal
-                    title="КОД КОМНАТЫ"
-                    subtitle="Введите код комнаты"
-                    placeholder="ABCDE"
-                    buttonText="Продолжить"
-                    onSaveName={handleSaveCode}
-                />
+                <RoomCodeModal onSubmit={handleSaveCode} />
 
             )}
-
-            {/* ---------------- ИМЯ ---------------- */}
-
-            {view === "name" && (
-
-                <NameModal
-                    title="ПРЕДСТАВЬТЕСЬ"
-                    subtitle="Семья должна знать, с кем имеет дело."
-                    placeholder="Ваше имя..."
-                    buttonText="Продолжить"
-                    onSaveName={handleSaveName}
-                />
-
-            )}
-
-            {/* ---------------- АВАТАР ---------------- */}
-
-            {view === "avatar" && (
-
-                <AvatarPicker
-                    onSelect={handleAvatarSelect}
-                />
-
-            )}
-
-
 
             {/* ---------------- ЛОББИ ---------------- */}
 
@@ -846,6 +849,7 @@ export default function OnlinePlay() {
                         onSendEmoji={sendEmoji}
                         isAdminViewer={isAdmin()}
                         onAdminGive={adminGiveCurrency}
+                        myAccountId={account?.id}
                     />
                     {console.log("mayor.id =", mayor?.id)}
                     {console.log("socket.id =", socket.id)}

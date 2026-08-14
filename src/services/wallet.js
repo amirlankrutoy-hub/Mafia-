@@ -64,12 +64,31 @@ export function getBalance() {
 // Начисление валюты (после подтверждённого пополнения)
 export function credit(amount) {
   const state = readState();
-  state.balance += Math.max(0, Math.floor(amount) || 0);
-  return writeState(state);
+  const value = Math.max(0, Math.floor(amount) || 0);
+  state.balance += value;
+  const result = writeState(state);
+  if (value > 0) {
+    import("./achievementsService").then((m) =>
+      m.recordEvent("mafio_earned", { amount: value })
+    ).catch(() => {});
+  }
+  return result;
 }
 
 export function ownsRole(roleId) {
   return readState().ownedRoles.includes(roleId);
+}
+
+// Списание валюты (для обмена Мафио на тени и т.п.). Возвращает { success, balance }.
+export function debit(amount) {
+  const value = Math.max(0, Math.floor(amount) || 0);
+  const state = readState();
+  if (!value || value > state.balance) {
+    return { success: false, balance: state.balance };
+  }
+  state.balance -= value;
+  writeState(state);
+  return { success: true, balance: state.balance };
 }
 
 export function ownsEmoji(emojiId) {

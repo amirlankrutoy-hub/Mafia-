@@ -38,15 +38,234 @@ app.get("/", (req, res) => {
 const mayorGraceTimers = {};
 const MAYOR_RECONNECT_GRACE_MS = 15000;
 
+// ==========================
+// Presence (для друзей): accountId -> { socketId, name, roomCode, isMayor }
+// ==========================
+const presence = {};
+
+function broadcastPresence(accountId) {
+    const p = presence[accountId];
+    io.emit("presence:changed", {
+        accountId,
+        online: !!p,
+        name: p?.name || null,
+        roomCode: p?.roomCode || null,
+        isMayor: !!p?.isMayor
+    });
+}
+
+function presenceStatus(accountId) {
+    const p = presence[accountId];
+    if (!p) return { id: accountId, online: false };
+    return {
+        id: accountId,
+        online: true,
+        name: p.name,
+        roomCode: p.roomCode || null,
+        isMayor: !!p.isMayor
+    };
+}
+
+// ==========================
+// Способности (покупаются за тени, используются в игре)
+// ==========================
+const ABILITY_WINDOW_MS = 10000;
+const ABILITY_DEFS = {
+    voice_change: { type: "day" },
+    extra_vote: { type: "day" },
+    vote_immunity: { type: "day" },
+    reveal_faction: { type: "day", needsTarget: true },
+    night_immortality: { type: "night" },
+    reveal_role: { type: "night", needsTarget: true }
+};
+const ROLE_META = {
+    doctor: { name: "Доктор", category: "civilians" },
+    krasotka: { name: "Красотка", category: "civilians" },
+    mafia: { name: "Мафиози", category: "mafia" },
+    manyak: { name: "Маньяк", category: "neutrals" },
+    obivatel: { name: "Обыватель", category: "civilians" },
+    otez: { name: "Крёстный отец", category: "mafia" },
+    poklon: { name: "Поклонница", category: "neutrals" },
+    potroshitel: { name: "Потрошитель", category: "neutrals" },
+    sherif: { name: "Шериф", category: "civilians" },
+    stukach: { name: "Стукач", category: "neutrals" },
+    sveshennik: { name: "Священник", category: "civilians" }
+};
+const FACTION_LABELS = {
+    civilians: "Мирные жители",
+    mafia: "Мафия",
+    neutrals: "Нейтралы"
+};
+
+function openAbilityWindow(room, phase) {
+    room.abilityWindow = { phase, expiresAt: Date.now() + ABILITY_WINDOW_MS };
+    room.abilityEffects = {
+        extraVoteWeight: {},
+        voteImmune: [],
+        nightImmune: [],
+        hiddenNames: []
+    };
+}
+
 io.on("connection", (socket) => {
 
     console.log("🟢 Игрок подключился:", socket.id);
 
     // ==========================
+    // Presence: регистрация онлайн-статуса (для системы друзей)
+    // ==========================
+    socket.on("presence:hello", (accountId, name) => {
+        if (!accountId) return;
+        socket.data.accountId = accountId;
+        presence[accountId] = {
+            socketId: socket.id,
+            name: name || presence[accountId]?.name || "Игрок",
+            roomCode: presence[accountId]?.roomCode || null,
+            isMayor: presence[accountId]?.isMayor || false
+        };
+        broadcastPresence(accountId);
+    });
+
+    // Поиск игрока по ID (для вкладки "Друзья")
+    socket.on("presence:search", (id, callback) => {
+        if (typeof callback !== "function") return;
+        callback(presenceStatus(String(id || "").trim()));
+    });
+
+    // Массовый статус (для списка друзей / недавних игроков)
+    socket.on("presence:bulk", (ids, callback) => {
+        if (typeof callback !== "function") return;
+        const list = (Array.isArray(ids) ? ids : []).map((id) => presenceStatus(id));
+        callback(list);
+    });
+
+    // ==========================
+    // Друзья: постучаться в комнату мэра
+    // ==========================
+    socket.on("friend:knock", ({ toAccountId, roomCode, fromAccountId, fromName }, callback) => {
+        const cb = typeof callback === "function" ? callback : () => {};
+        const room = RoomManager.getRoom(roomCode);
+
+        if (!room || !room.mayor?.id) {
+            cb({ success: false, message: "Комната не найдена" });
+            return;
+        }
+
+        io.to(room.mayor.id).emit("friend:incoming-request", {
+            requesterSocketId: socket.id,
+            requesterAccountId: fromAccountId,
+            requesterName: fromName,
+            roomCode
+        });
+
+        cb({ success: true });
+    });
+
+    // Мэр принял/отклонил заявку друга
+    socket.on("friend:mayor-response", ({ roomCode, requesterSocketId, accepted }) => {
+        const room = RoomManager.getRoom(roomCode);
+        if (!room || room.mayor?.id !== socket.id) return;
+
+        io.to(requesterSocketId).emit("friend:join-decision", {
+            accepted: !!accepted,
+            roomCode
+        });
+    });
+
+    // ==========================
+    // Активация купленной способности (10 сек окно в начале дня/ночи)
+    // ==========================
+    socket.on("ability:activate", ({ roomCode, abilityId, targetId }, callback) => {
+        const cb = typeof callback === "function" ? callback : () => {};
+        const room = RoomManager.getRoom(roomCode);
+        if (!room) return cb({ success: false, message: "Комната не найдена" });
+
+        const def = ABILITY_DEFS[abilityId];
+        if (!def) return cb({ success: false, message: "Неизвестная способность" });
+
+        if (!room.abilityWindow || Date.now() > room.abilityWindow.expiresAt) {
+            return cb({ success: false, message: "Окно активации закрыто" });
+        }
+        if (room.abilityWindow.phase !== def.type) {
+            return cb({ success: false, message: "Сейчас нельзя использовать эту способность" });
+        }
+
+        const me = room.players.find((p) => p.id === socket.id && p.alive !== false);
+        if (!me) return cb({ success: false, message: "Недоступно" });
+
+        if (def.needsTarget && !targetId) {
+            return cb({ success: false, message: "Нужна цель" });
+        }
+
+        room.abilityEffects = room.abilityEffects || {
+            extraVoteWeight: {},
+            voteImmune: [],
+            nightImmune: [],
+            hiddenNames: []
+        };
+
+        let info = null;
+
+        switch (abilityId) {
+            case "voice_change":
+                room.abilityEffects.hiddenNames.push(socket.id);
+                break;
+
+            case "extra_vote":
+                room.abilityEffects.extraVoteWeight[socket.id] =
+                    (room.abilityEffects.extraVoteWeight[socket.id] || 1) + 1;
+                break;
+
+            case "vote_immunity":
+                room.abilityEffects.voteImmune.push(socket.id);
+                break;
+
+            case "reveal_faction": {
+                const target = room.players.find((p) => p.id === targetId && p.alive !== false);
+                if (!target) return cb({ success: false, message: "Цель не найдена" });
+                const meta = ROLE_META[target.role];
+                info = `${target.name}: фракция «${FACTION_LABELS[meta?.category] || "неизвестно"}»`;
+                break;
+            }
+
+            case "night_immortality":
+                room.abilityEffects.nightImmune.push(socket.id);
+                break;
+
+            case "reveal_role": {
+                const target = room.players.find((p) => p.id === targetId && p.alive !== false);
+                if (!target) return cb({ success: false, message: "Цель не найдена" });
+                const meta = ROLE_META[target.role];
+                info = `${target.name}: роль «${meta?.name || target.role}»`;
+                break;
+            }
+
+            default:
+                return cb({ success: false, message: "Неизвестная способность" });
+        }
+
+        cb({ success: true, info });
+    });
+
+    // ==========================
     // Создание комнаты
     // ==========================
-    socket.on("create-room", (mayorName, avatar, callback) => {
+    socket.on("create-room", (mayorName, avatar, accountId, callback) => {
+        // поддержка старой сигнатуры (mayorName, avatar, callback)
+        if (typeof accountId === "function") {
+            callback = accountId;
+            accountId = null;
+        }
+
         const room = RoomManager.createRoom(socket, mayorName, avatar);
+        if (accountId) {
+            room.mayor.accountId = accountId;
+            if (presence[accountId]) {
+                presence[accountId].roomCode = room.code;
+                presence[accountId].isMayor = true;
+                broadcastPresence(accountId);
+            }
+        }
 
         const response = {
             success: true,
@@ -67,7 +286,13 @@ io.on("connection", (socket) => {
     // ==========================
     // Вход в комнату
     // ==========================
-    socket.on("join-room", (roomCode, playerName, avatar, callback) => {
+    socket.on("join-room", (roomCode, playerName, avatar, accountId, callback) => {
+        // поддержка старой сигнатуры (roomCode, playerName, avatar, callback)
+        if (typeof accountId === "function") {
+            callback = accountId;
+            accountId = null;
+        }
+
         const result = RoomManager.joinRoom(socket, roomCode, {
             name: playerName,
             avatar
@@ -78,8 +303,24 @@ io.on("connection", (socket) => {
             return;
         }
 
+        const amMayor = result.room.mayor.id === socket.id;
+
+        if (accountId) {
+            if (amMayor) {
+                result.room.mayor.accountId = accountId;
+            } else {
+                const me = result.room.players.find((p) => p.id === socket.id);
+                if (me) me.accountId = accountId;
+            }
+            if (presence[accountId]) {
+                presence[accountId].roomCode = roomCode;
+                presence[accountId].isMayor = amMayor;
+                broadcastPresence(accountId);
+            }
+        }
+
         // Если это мэр вернулся после F5 — отменяем таймер закрытия комнаты
-        if (result.room.mayor.id === socket.id && mayorGraceTimers[roomCode]) {
+        if (amMayor && mayorGraceTimers[roomCode]) {
             clearTimeout(mayorGraceTimers[roomCode]);
             delete mayorGraceTimers[roomCode];
             console.log(`👑 Мэр переподключился, комната ${roomCode} остаётся открытой`);
@@ -877,6 +1118,12 @@ io.on("connection", (socket) => {
     // Отключение
     // ==========================
     socket.on("disconnect", () => {
+        const myAccountId = socket.data.accountId;
+        if (myAccountId && presence[myAccountId]?.socketId === socket.id) {
+            delete presence[myAccountId];
+            broadcastPresence(myAccountId);
+        }
+
         const room = RoomManager.getRoomBySocket(socket.id);
 
         if (!room) {
@@ -1029,6 +1276,8 @@ io.on("connection", (socket) => {
         if (!room || room.mayor?.id !== socket.id) return;
 
         const night = GameFlowManager.beginNight(roomCode);
+        openAbilityWindow(room, "night");
+        io.to(roomCode).emit("ability-window", room.abilityWindow);
         broadcastNight(roomCode, night);
     });
 
@@ -1082,6 +1331,8 @@ io.on("connection", (socket) => {
 
         setTimeout(() => {
             const vote = GameFlowManager.beginVoting(roomCode);
+            openAbilityWindow(room, "day");
+            io.to(roomCode).emit("ability-window", room.abilityWindow);
             emitPhase(roomCode, { phase: "voting", vote });
         }, 3000);
     });

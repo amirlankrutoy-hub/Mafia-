@@ -1,62 +1,63 @@
 import { socket } from "../socket";
 
-// ==========================
-// Создать комнату
-// ==========================
+const ACK_TIMEOUT_MS = 8000;
 
-export function createRoom(playerName, avatar) {
-
+// Оборачивает emit с ack-колбэком: если сервер не ответил за ACK_TIMEOUT_MS,
+// возвращаем понятную ошибку вместо вечного "зависания" интерфейса.
+function emitWithTimeout(event, ...args) {
     return new Promise((resolve) => {
+        let settled = false;
+
+        const timer = setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            resolve({
+                success: false,
+                message:
+                    "Сервер не отвечает. Проверьте, что игровой сервер запущен и доступен."
+            });
+        }, ACK_TIMEOUT_MS);
+
+        const onConnectError = (err) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            socket.off("connect_error", onConnectError);
+            resolve({
+                success: false,
+                message: `Не удалось подключиться к серверу: ${err?.message || err}`
+            });
+        };
+        socket.once("connect_error", onConnectError);
 
         if (!socket.connected) {
             socket.connect();
         }
 
-        socket.emit(
-            "create-room",
-            playerName,
-            avatar,
-            (response) => {
-
-                resolve(response);
-
-            }
-        );
-
+        socket.emit(event, ...args, (response) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            socket.off("connect_error", onConnectError);
+            resolve(response);
+        });
     });
+}
 
+// ==========================
+// Создать комнату
+// ==========================
+
+export function createRoom(playerName, avatar, accountId = null) {
+    return emitWithTimeout("create-room", playerName, avatar, accountId);
 }
 
 // ==========================
 // Войти в комнату
 // ==========================
 
-// ==========================
-// Войти в комнату
-// ==========================
-
-export function joinRoom(roomCode, playerName, avatar) {
-
-    return new Promise((resolve) => {
-
-        if (!socket.connected) {
-            socket.connect();
-        }
-
-        socket.emit(
-            "join-room",
-            roomCode,
-            playerName,
-            avatar,
-            (response) => {
-
-                resolve(response);
-
-            }
-        );
-
-    });
-
+export function joinRoom(roomCode, playerName, avatar, accountId = null) {
+    return emitWithTimeout("join-room", roomCode, playerName, avatar, accountId);
 }
 
 // ==========================
