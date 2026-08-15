@@ -791,7 +791,7 @@ export default function OnlinePlay({ account }) {
 
                 <div className="min-h-screen bg-black flex flex-col items-center pt-32 gap-8">
 
-                    <h1 className="text-6xl font-bold text-yellow-500">
+                    <h1 className="text-6xl text-center font-bold text-yellow-500">
                         MAFIA PLAY
                     </h1>
 

@@ -12,20 +12,15 @@
     "@fortawesome/fontawesome-svg-core": "^7.3.1",
     "@fortawesome/free-solid-svg-icons": "^7.3.1",
     "@fortawesome/react-fontawesome": "^3.5.0",
-    "@tailwindcss/vite": "^4.3.3",
-    "cors": "^2.8.6",
-    "express": "^5.2.1",
-    "firebase": "^12.16.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.30.4",
-    "socket.io": "^4.8.3",
-    "socket.io-client": "^4.8.3",
-    "tailwindcss": "^4.3.3"
+    "react-router-dom": "^7.18.2",
+    "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.3.1",
-    "nodemon": "^3.1.14",
-    "vite": "^5.4.0"
+    "@tailwindcss/vite": "^4.3.3",
+    "@vitejs/plugin-react": "^4.3.4",
+    "tailwindcss": "^4.3.3",
+    "vite": "^5.4.11"
   }
 }
