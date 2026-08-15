@@ -10,6 +10,7 @@ import {
     createRoom,
     joinRoom,
     setupRoles,
+    setAbilitiesEnabled,
     startGame,
     onPlayersUpdated,
     onYourRole,
@@ -587,13 +588,13 @@ export default function OnlinePlay({ account }) {
     // НАЧАТЬ ИГРУ
     // ==========================
 
-    const handlePartyStart = (roles) => {
+    const handlePartyStart = (roles, abilitiesEnabled = true) => {
 
         setSelectedRoles(roles);
 
         setupRoles(roomCode, roles);
 
-        setupRoles(roomCode, roles);
+        setAbilitiesEnabled(roomCode, abilitiesEnabled);
 
         // только после нажатия "Начать игру"
         // игрокам придет событие waiting-party-setup

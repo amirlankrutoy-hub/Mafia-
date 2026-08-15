@@ -84,7 +84,6 @@ export default function MayorPanel({
               }`}
             >
               <p className="font-bold">{p.name}</p>
-              <p className="text-sm text-yellow-500">{p.role || "?"}</p>
               <p className="text-xs text-gray-500">
                 {p.alive === false ? "мёртв" : "жив"}
               </p>

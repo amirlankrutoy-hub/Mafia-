@@ -89,6 +89,12 @@ export function setupRoles(roomCode, roles) {
 
 }
 
+export function setAbilitiesEnabled(roomCode, enabled) {
+
+    socket.emit("set-abilities-enabled", roomCode, enabled);
+
+}
+
 export function onYourRole(callback) {
 
     socket.on("your-role", callback);

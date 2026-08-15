@@ -5,11 +5,11 @@ const http = require("http");
 const { Server } = require("socket.io");
 const cors = require("cors");
 
-const RoomManager = require("./managers/RoomManager");
-const GameManager = require("./managers/GameManager");
-const RoleManager = require("./managers/RoleManager");
-const NightManager = require("./managers/NightManager");
-const GameFlowManager = require("./managers/GameFlowManager");
+const RoomManager = require("../managers/RoomManager");
+const GameManager = require("../managers/GameManager");
+const RoleManager = require("../managers/RoleManager");
+const NightManager = require("../managers/NightManager");
+const GameFlowManager = require("../managers/GameFlowManager");
 
 const app = express();
 
@@ -179,6 +179,10 @@ io.on("connection", (socket) => {
         const cb = typeof callback === "function" ? callback : () => {};
         const room = RoomManager.getRoom(roomCode);
         if (!room) return cb({ success: false, message: "Комната не найдена" });
+
+        if (room.abilitiesEnabled === false) {
+            return cb({ success: false, message: "Мэр запретил способности в этой игре" });
+        }
 
         const def = ABILITY_DEFS[abilityId];
         if (!def) return cb({ success: false, message: "Неизвестная способность" });
@@ -395,6 +399,14 @@ io.on("connection", (socket) => {
         room.phase = "LOBBY";
         io.to(roomCode).emit("roles-updated", roles);
         console.log(`🎭 Комната ${roomCode} настроена.`);
+    });
+
+    // Мэр может запретить способности в этой игре — вызывается перед стартом
+    socket.on("set-abilities-enabled", (roomCode, enabled) => {
+        const room = RoomManager.getRoom(roomCode);
+        if (!room || room.mayor?.id !== socket.id) return;
+        room.abilitiesEnabled = !!enabled;
+        console.log(`🧩 Способности в ${roomCode}: ${room.abilitiesEnabled ? "разрешены" : "запрещены"}`);
     });
 
     socket.on("lobby-open", (roomCode) => {
@@ -1175,7 +1187,8 @@ io.on("connection", (socket) => {
             name: p.name,
             avatar: p.avatar,
             alive: p.alive !== false,
-            role: p.role,
+            // Роль сюда намеренно НЕ включена — даже мэр не должен знать,
+            // кто есть кто, до тех пор пока игрок не будет казнён/убит.
             readyForGame: !!p.readyForGame
         }));
     }
@@ -1211,15 +1224,12 @@ io.on("connection", (socket) => {
         const room = GameFlowManager.startGame(roomCode);
         if (!room) return;
 
-        const assignments = {};
         room.players.forEach((p) => {
-            assignments[p.id] = p.role;
             io.to(p.id).emit("your-role", p.role);
         });
 
-        if (room.mayor?.id) {
-            io.to(room.mayor.id).emit("all-roles", assignments);
-        }
+        // Роли намеренно не отправляются мэру — он не должен знать,
+        // кто есть кто, как и остальные игроки.
 
         emitPhase(roomCode, {
             phase: "waiting_ready",
@@ -1276,8 +1286,10 @@ io.on("connection", (socket) => {
         if (!room || room.mayor?.id !== socket.id) return;
 
         const night = GameFlowManager.beginNight(roomCode);
-        openAbilityWindow(room, "night");
-        io.to(roomCode).emit("ability-window", room.abilityWindow);
+        if (room.abilitiesEnabled !== false) {
+            openAbilityWindow(room, "night");
+            io.to(roomCode).emit("ability-window", room.abilityWindow);
+        }
         broadcastNight(roomCode, night);
     });
 
@@ -1331,8 +1343,10 @@ io.on("connection", (socket) => {
 
         setTimeout(() => {
             const vote = GameFlowManager.beginVoting(roomCode);
-            openAbilityWindow(room, "day");
-            io.to(roomCode).emit("ability-window", room.abilityWindow);
+            if (room.abilitiesEnabled !== false) {
+                openAbilityWindow(room, "day");
+                io.to(roomCode).emit("ability-window", room.abilityWindow);
+            }
             emitPhase(roomCode, { phase: "voting", vote });
         }, 3000);
     });

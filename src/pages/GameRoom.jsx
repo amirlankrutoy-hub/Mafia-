@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { socket } from "../../socket";
-import MayorPanel from "./MayorPanel";
+import MayorPanel from "./game/MayorPanel";
 import PlayerNight from "./PlayerNight";
 import VotingScreen from "./VotingScreen";
 import BlackPhrase from "./BlackPhrase";
@@ -9,8 +9,6 @@ import MayorExecutionScreen from "./MayorExecutionScreen";
 import roles from "../../data/roles";
 import { WIN_REWARDS } from "../../data/shopData";
 import { credit } from "../../services/wallet";
-import { recordEvent } from "../../services/achievementsService";
-import AbilityBar from "../../components/game/AbilityBar";
 
 export default function GameRoom({
   roomCode,
@@ -37,7 +35,6 @@ export default function GameRoom({
   const [earnedReward, setEarnedReward] = useState(0);
   const [playAgainState, setPlayAgainState] = useState("idle");
   const rewardGivenRef = useRef(false);
-  const achievementGivenRef = useRef(false);
 
   useEffect(() => {
     const onPhase = (data) => {
@@ -92,29 +89,6 @@ export default function GameRoom({
     credit(amount);
     setEarnedReward(amount);
   }, [winner, isMayor, myRole]);
-
-  // Достижения: фиксируем итог игры один раз за партию.
-  useEffect(() => {
-    if (!winner || isMayor || !myRole || achievementGivenRef.current) return;
-    achievementGivenRef.current = true;
-
-    const roleInfo = roles.find((r) => r.id === myRole);
-    const teamMap = { civilians: "town", mafia: "mafia", neutrals: "neutral" };
-    const team = teamMap[roleInfo?.category] || null;
-    const won = team ? winner.winner === team || (team === "neutral" && ["manyak", "potroshitel"].includes(myRole) && winner.winner === myRole) : false;
-
-    const me = players.find((p) => p.id === socket.id);
-    const alive = me ? me.alive !== false : false;
-
-    recordEvent("game_played");
-    recordEvent("game_result", {
-      won,
-      team,
-      role: myRole,
-      alive,
-      killedBy: alive ? null : "night"
-    });
-  }, [winner, isMayor, myRole, players]);
 
   // Игрока убили (ночью, на голосовании или рукой мэра) —
   // показываем скример, затем отправляем его в лобби.
@@ -207,16 +181,39 @@ export default function GameRoom({
   }
 
   if (phase === "vote_result" && voteResult) {
+    const executedRole = voteResult.executed
+      ? roles.find((r) => r.id === voteResult.executed.role)
+      : null;
+
     return (
-      <div className="fixed inset-0 z-[300] bg-black flex items-center justify-center">
+      <div className="fixed inset-0 z-[300] bg-black flex flex-col items-center justify-center gap-6 px-6 text-center">
         <h1
-          className="text-5xl font-black text-red-600 tracking-widest text-center px-6"
+          className="text-4xl sm:text-5xl font-black text-red-600 tracking-widest"
           style={{ textShadow: "0 0 20px #8b0000" }}
         >
           {voteResult.executed
             ? `${voteResult.executed.name} был казнён`
             : "Никто не был казнён"}
         </h1>
+
+        {executedRole && (
+          <div className="flex flex-col items-center gap-3 mt-2 animate-fadeIn">
+            <img
+              src={executedRole.image}
+              alt={executedRole.name}
+              className="w-32 h-32 sm:w-40 sm:h-40 rounded-full object-cover border-4 border-[#d4af37] shadow-[0_0_30px_rgba(212,175,55,0.5)]"
+            />
+            <p className="text-sm uppercase tracking-widest text-[#c5a059]">
+              Оказался{executedRole.category === "civilians" ? "" : "(а)"} —
+            </p>
+            <p className="text-3xl font-black text-[#d4af37]">
+              {executedRole.name}
+            </p>
+            <p className="text-xs text-[#8b6b12] uppercase tracking-wide">
+              {executedRole.team}
+            </p>
+          </div>
+        )}
       </div>
     );
   }
@@ -224,21 +221,15 @@ export default function GameRoom({
   if ((phase === "voting" || phase === "voting_runoff") && voteData) {
     const blocked = (voteData.blockedVoters || []).includes(socket.id);
     return (
-      <>
-        <VotingScreen
-          round={voteData.round}
-          players={voteData.candidates || []}
-          endsAt={voteData.endsAt}
-          isMayor={isMayor}
-          blocked={blocked}
-          onVote={(tid) => {
-            if (!isMayor) recordEvent("vote_cast");
-            socket.emit("cast-vote", roomCode, tid);
-          }}
-          onForceEnd={() => socket.emit("finish-voting", roomCode)}
-        />
-        {!isMayor && <AbilityBar phase="day" roomCode={roomCode} players={players} />}
-      </>
+      <VotingScreen
+        round={voteData.round}
+        players={voteData.candidates || []}
+        endsAt={voteData.endsAt}
+        isMayor={isMayor}
+        blocked={blocked}
+        onVote={(tid) => socket.emit("cast-vote", roomCode, tid)}
+        onForceEnd={() => socket.emit("finish-voting", roomCode)}
+      />
     );
   }
 
@@ -328,26 +319,17 @@ export default function GameRoom({
   if (phase === "night" || phase === "night_wait") {
     if (isMyTurn && nightInfo) {
       return (
-        <>
-          <PlayerNight
-            step={nightInfo.step}
-            targets={nightInfo.targets}
-            onAction={(targetId, mode) => {
-              recordEvent("night_action", { role: myRole });
-              socket.emit("night-action", roomCode, { targetId, mode });
-            }}
-            onDone={() => socket.emit("night-next", roomCode)}
-          />
-          {!isMayor && <AbilityBar phase="night" roomCode={roomCode} players={players} />}
-        </>
+        <PlayerNight
+          step={nightInfo.step}
+          targets={nightInfo.targets}
+          onAction={(targetId, mode) =>
+            socket.emit("night-action", roomCode, { targetId, mode })
+          }
+          onDone={() => socket.emit("night-next", roomCode)}
+        />
       );
     }
-    return (
-      <>
-        <BlackPhrase text={phrase || nightInfo?.phrase} />
-        {!isMayor && <AbilityBar phase="night" roomCode={roomCode} players={players} />}
-      </>
-    );
+    return <BlackPhrase text={phrase || nightInfo?.phrase} />;
   }
 
   if (phase === "morning") {

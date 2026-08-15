@@ -9,6 +9,7 @@ export default function PartySetup({
 }) {
 
     const [selectedRoles, setSelectedRoles] = useState({});
+    const [abilitiesEnabled, setAbilitiesEnabled] = useState(true);
 
     const totalSelected = useMemo(() => {
 
@@ -124,10 +125,22 @@ export default function PartySetup({
         })}
       </div>
 
-      <div className="flex justify-center gap-4 mt-16 pb-10">
+      <div className="flex flex-col items-center gap-4 mt-16 pb-10">
+        <label className="flex items-center gap-3 bg-zinc-900/80 border border-yellow-700/40 rounded-xl px-5 py-3 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={abilitiesEnabled}
+            onChange={(e) => setAbilitiesEnabled(e.target.checked)}
+            className="w-5 h-5 accent-yellow-500"
+          />
+          <span className="text-sm font-bold text-gray-200">
+            Разрешить способности в этой игре
+          </span>
+        </label>
+
         <button
           type="button"
-          onClick={() => onStart(selectedRoles)}
+          onClick={() => onStart(selectedRoles, abilitiesEnabled)}
           disabled={totalSelected !== players.length}
           className={`px-12 py-5 rounded-xl text-2xl font-bold transition ${
             totalSelected === players.length
