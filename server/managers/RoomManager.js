@@ -1,4 +1,4 @@
-const rooms = require("../data/rooms");
+import rooms from "../data/rooms.js";
 const generateCode = require("../utils/generateCode");
 
 class RoomManager {
@@ -249,4 +249,4 @@ class RoomManager {
 
 }
 
-module.exports = new RoomManager();
+export default new RoomManager();

@@ -1,5 +1,5 @@
-const rooms = require("../data/rooms");
-const generateCode = require("../utils/generateCode");
+import rooms from "../data/rooms.js";   // обязательно с .js
+import express from "express";
 
 class RoomManager {
 
@@ -212,4 +212,4 @@ class RoomManager {
 
 }
 
-module.exports = new RoomManager();
+export default new RoomManager();

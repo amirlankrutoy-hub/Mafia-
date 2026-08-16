@@ -24,13 +24,8 @@ const ConnectionStatus = () => {
   }, []);
 
   if (!error) return null;
-
-  return (
-    <div className="fixed top-0 inset-x-0 z-[300] bg-red-900/95 border-b-2 border-red-500 text-center py-2 px-4 text-sm text-red-100">
-      Нет соединения с игровым сервером ({error}). Проверьте, что сервер запущен
-      и адрес в <code className="bg-black/30 px-1 rounded">VITE_SOCKET_URL</code> указан верно.
-    </div>
-  );
+  console.log("ошибка сервера")
+ 
 };
 
 export default ConnectionStatus;
