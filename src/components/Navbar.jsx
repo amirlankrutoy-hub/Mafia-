@@ -14,13 +14,17 @@ import {
   faTrophy,
   faIdCard,
   faShieldHalved,
-  faRightFromBracket
+  faRightFromBracket,
+  faLanguage
 } from '@fortawesome/free-solid-svg-icons';
 import TopUpModal from './shop/TopUpModal';
+import LanguageSwitcher from './LanguageSwitcher';
 import { useMusic } from '../context/MusicContext';
 import { getAdminRoleInfo, logoutAdmin } from '../services/admin';
 import { getTeniBalance } from '../services/teniWallet';
 import { getBalance } from '../services/wallet';
+import { getSelectedAvatar, getFavoriteRole } from '../services/profile';
+import { updateProfile, announcePresence } from '../services/presence';
 import TeniExchangeModal from './shop/TeniExchangeModal';
 
 const Navbar = ({ account }) => {
@@ -56,6 +60,37 @@ const Navbar = ({ account }) => {
     window.addEventListener('mafia-admin-changed', refresh);
     return () => window.removeEventListener('mafia-admin-changed', refresh);
   }, []);
+
+  // Синхронизируем публичный профиль (иконка/любимая роль/победы) с сервером,
+  // чтобы другие игроки сразу видели актуальные данные.
+  useEffect(() => {
+    if (!account) return;
+
+    const pushProfile = () => {
+      import('../services/achievementsService').then((m) => {
+        const stats = m.getStats?.() || {};
+        updateProfile({
+          accountId: account.id,
+          name: account.name,
+          icon: getSelectedAvatar(),
+          favoriteRole: getFavoriteRole(),
+          wins: stats.wins || 0
+        });
+      });
+    };
+
+    announcePresence(account.id, account.name);
+    pushProfile();
+
+    window.addEventListener('mafia-avatar-changed', pushProfile);
+    window.addEventListener('mafia-favorite-role-changed', pushProfile);
+    window.addEventListener('mafia-achievements-changed', pushProfile);
+    return () => {
+      window.removeEventListener('mafia-avatar-changed', pushProfile);
+      window.removeEventListener('mafia-favorite-role-changed', pushProfile);
+      window.removeEventListener('mafia-achievements-changed', pushProfile);
+    };
+  }, [account]);
 
   useEffect(() => {
     setIsDrawerOpen(false);
@@ -102,7 +137,14 @@ const Navbar = ({ account }) => {
 
       {/* Профиль */}
       {account && (
-        <div className="mt-4 rounded-xl border border-[#d4af37]/30 bg-[#0d0705]/60 p-3">
+        <button
+          type="button"
+          onClick={() => {
+            if (onNavigate) onNavigate();
+            navigate('/profile');
+          }}
+          className="mt-4 w-full rounded-xl border border-[#d4af37]/30 bg-[#0d0705]/60 p-3 text-left hover:border-[#d4af37]/60 transition"
+        >
           <div className="text-[10px] uppercase tracking-widest text-[#c5a059]">
             {adminRole ? (
               <strong style={{ color: adminRole.color }}>{adminRole.label}</strong>
@@ -110,11 +152,20 @@ const Navbar = ({ account }) => {
               'Игрок'
             )}
           </div>
-          <div className="text-base font-bold text-[#f3e5ab] truncate">{account.name}</div>
-          <div className="text-[11px] text-[#c5a059] mt-0.5">
-            ID: <span className="font-mono text-[#d4af37]">{account.id}</span>
+          <div className="flex items-center gap-2">
+            <img
+              src={getSelectedAvatar()}
+              alt=""
+              className="h-8 w-8 rounded-full border border-[#d4af37]/50 object-cover"
+            />
+            <div className="min-w-0">
+              <div className="text-base font-bold text-[#f3e5ab] truncate">{account.name}</div>
+              <div className="text-[11px] text-[#c5a059]">
+                ID: <span className="font-mono text-[#d4af37]">{account.id}</span>
+              </div>
+            </div>
           </div>
-        </div>
+        </button>
       )}
 
       {/* Валюта */}
@@ -159,6 +210,14 @@ const Navbar = ({ account }) => {
             ● {menuMuted ? 'Выкл' : 'Вкл'}
           </span>
         </button>
+
+        <div className="w-full rounded-xl border border-[#d4af37]/30 bg-[#180e0a] px-3 py-2 flex items-center justify-between">
+          <span className="flex items-center gap-2 text-[#f3e5ab] font-bold text-sm">
+            <FontAwesomeIcon icon={faLanguage} className="text-[#d4af37]" />
+            Язык
+          </span>
+          <LanguageSwitcher />
+        </div>
       </div>
 
       <nav className="flex-1 my-4 space-y-1.5">

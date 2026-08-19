@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { isNewRole } from '../data/shopData';
 
 const RoleCard = ({ role }) => {
   return (
@@ -7,6 +8,11 @@ const RoleCard = ({ role }) => {
       to={`/role/${role.id}`}
       className="group relative flex flex-col justify-between overflow-hidden rounded-xl border-2 border-[#c5a059]/40 bg-gradient-to-b from-[#1c100b] via-[#120a07] to-[#0a0503] p-3 sm:p-4 shadow-[0_10px_25px_rgba(0,0,0,0.8)] transition-all duration-300 hover:-translate-y-1 sm:hover:-translate-y-2 hover:border-[#d4af37] hover:shadow-[0_15px_30px_rgba(212,175,55,0.25)]"
     >
+      {isNewRole(role.id) && (
+        <span className="absolute top-2 right-2 z-10 rounded-full bg-gradient-to-r from-[#8b0000] to-[#d4af37] px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-white shadow-[0_2px_8px_rgba(0,0,0,0.8)] animate-pulse">
+          New
+        </span>
+      )}
       {/* Декоративные уголки */}
       <div className="absolute top-1 left-1 h-3 w-3 border-t-2 border-l-2 border-[#d4af37]/60 group-hover:border-[#d4af37]" />
       <div className="absolute top-1 right-1 h-3 w-3 border-t-2 border-r-2 border-[#d4af37]/60 group-hover:border-[#d4af37]" />

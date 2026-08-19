@@ -1,5 +1,5 @@
-const RoomManager = require("./RoomManager");
-const RoleManager = require("./RoleManager");
+import RoomManager from "./RoomManager.js";
+import RoleManager from "./RoleManager.js";
 class GameManager {
 
     startGame(roomCode) {
@@ -510,4 +510,4 @@ class GameManager {
 }
 
 
-module.exports = new GameManager();
+export default new GameManager();

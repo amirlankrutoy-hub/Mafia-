@@ -1,4 +1,4 @@
-import rooms from "../data/rooms.js";
+const rooms = require("../data/rooms");
 const generateCode = require("../utils/generateCode");
 
 class RoomManager {
@@ -39,6 +39,8 @@ class RoomManager {
             players: [],
 
             selectedRoles: {},
+
+            difficulty: "easy", // "easy" | "hard" — задаётся мэром перед стартом
 
             votes: {},
 
@@ -156,6 +158,7 @@ class RoomManager {
         room.voteCandidates = [];
         room.voteRound = null;
         room.pendingExecution = null;
+        room.matchStats = {};
 
         room.players = room.players.map((p) => ({
             ...p,
@@ -163,7 +166,8 @@ class RoomManager {
             alive: true,
             ready: false,
             readyForGame: false,
-            canVote: true
+            canVote: true,
+            linkedTo: null
         }));
 
         return room;
@@ -249,4 +253,4 @@ class RoomManager {
 
 }
 
-export default new RoomManager();
+module.exports = new RoomManager();

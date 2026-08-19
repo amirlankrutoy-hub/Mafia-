@@ -44,6 +44,27 @@ export function getRecentPlayers() {
   return readList(RECENT_KEY);
 }
 
+// ---------- Отправленные заявки в друзья (для состояния кнопки "Дружить") ----------
+const SENT_REQUESTS_KEY = "mafia_sent_friend_requests_v1"; // [accountId]
+
+export function getSentRequests() {
+  return readList(SENT_REQUESTS_KEY);
+}
+
+export function isSentRequest(id) {
+  return getSentRequests().includes(id);
+}
+
+export function markRequestSent(id) {
+  if (!id) return;
+  const list = getSentRequests();
+  if (!list.includes(id)) writeList(SENT_REQUESTS_KEY, [...list, id]);
+}
+
+export function unmarkRequestSent(id) {
+  writeList(SENT_REQUESTS_KEY, getSentRequests().filter((x) => x !== id));
+}
+
 /** Вызывать когда игрок оказывается в одном лобби с другими (id != мой id) */
 export function noteRecentPlayers(players, myId) {
   if (!Array.isArray(players) || !players.length) return;

@@ -5,11 +5,11 @@ const http = require("http");
 const { Server } = require("socket.io");
 const cors = require("cors");
 
-const RoomManager = require("../managers/RoomManager");
-const GameManager = require("../managers/GameManager");
-const RoleManager = require("../managers/RoleManager");
-const NightManager = require("../managers/NightManager");
-const GameFlowManager = require("../managers/GameFlowManager");
+const RoomManager = require("./managers/RoomManager");
+const GameManager = require("./managers/GameManager");
+const RoleManager = require("./managers/RoleManager");
+const NightManager = require("./managers/NightManager");
+const GameFlowManager = require("./managers/GameFlowManager");
 
 const app = express();
 
@@ -56,15 +56,53 @@ function broadcastPresence(accountId) {
 
 function presenceStatus(accountId) {
     const p = presence[accountId];
-    if (!p) return { id: accountId, online: false };
+    const prof = accountProfiles[accountId] || {};
+    if (!p) {
+        return {
+            id: accountId,
+            online: false,
+            name: prof.name || null,
+            icon: prof.icon || null,
+            favoriteRole: prof.favoriteRole || null,
+            wins: typeof prof.wins === "number" ? prof.wins : 0
+        };
+    }
     return {
         id: accountId,
         online: true,
         name: p.name,
         roomCode: p.roomCode || null,
-        isMayor: !!p.isMayor
+        isMayor: !!p.isMayor,
+        icon: prof.icon || null,
+        favoriteRole: prof.favoriteRole || null,
+        wins: typeof prof.wins === "number" ? prof.wins : 0
     };
 }
+
+// ==========================
+// Публичные профили: иконка, любимая роль, победы — видно другим игрокам.
+// Хранится в памяти сервера (сбрасывается при перезапуске — без БД иначе никак).
+// ==========================
+const accountProfiles = {}; // accountId -> { name, icon, favoriteRole, wins }
+
+function publicProfile(accountId) {
+    const prof = accountProfiles[accountId] || {};
+    const online = presence[accountId];
+    return {
+        id: accountId,
+        name: (online && online.name) || prof.name || null,
+        icon: prof.icon || null,
+        favoriteRole: prof.favoriteRole || null,
+        wins: typeof prof.wins === "number" ? prof.wins : 0
+    };
+}
+
+// ==========================
+// Заявки в друзья: хранятся на сервере (в памяти), пока не приняты/отклонены.
+// Если получатель сейчас онлайн — уведомление придёт мгновенно;
+// в любом случае заявка видна во вкладке "Заявки" при следующем заходе.
+// ==========================
+const friendRequests = {}; // toAccountId -> [{ fromAccountId, fromName, fromIcon, createdAt }]
 
 // ==========================
 // Способности (покупаются за тени, используются в игре)
@@ -89,12 +127,23 @@ const ROLE_META = {
     potroshitel: { name: "Потрошитель", category: "neutrals" },
     sherif: { name: "Шериф", category: "civilians" },
     stukach: { name: "Стукач", category: "neutrals" },
-    sveshennik: { name: "Священник", category: "civilians" }
+    sveshennik: { name: "Священник", category: "civilians" },
+    vor: { name: "Вор", category: "mafia" }
 };
 const FACTION_LABELS = {
     civilians: "Мирные жители",
     mafia: "Мафия",
     neutrals: "Нейтралы"
+};
+
+// Сложный режим: вместо роли погибшего показываем, "от чьей руки" он погиб.
+const KILLER_LABELS = {
+    mafia: "мафии",
+    manyak: "маньяка",
+    potroshitel: "потрошителя",
+    sherif: "шерифа",
+    sveshennik: "священника",
+    krasotka_redirect: "неизвестного"
 };
 
 function openAbilityWindow(room, phase) {
@@ -123,6 +172,9 @@ io.on("connection", (socket) => {
             roomCode: presence[accountId]?.roomCode || null,
             isMayor: presence[accountId]?.isMayor || false
         };
+        if (name) {
+            accountProfiles[accountId] = { ...accountProfiles[accountId], name };
+        }
         broadcastPresence(accountId);
     });
 
@@ -170,6 +222,100 @@ io.on("connection", (socket) => {
             accepted: !!accepted,
             roomCode
         });
+    });
+
+    // ==========================
+    // Публичный профиль (иконка/любимая роль/победы)
+    // ==========================
+    socket.on("profile:update", ({ accountId, icon, favoriteRole, wins, name }) => {
+        if (!accountId) return;
+        accountProfiles[accountId] = {
+            ...accountProfiles[accountId],
+            ...(icon !== undefined ? { icon } : {}),
+            ...(favoriteRole !== undefined ? { favoriteRole } : {}),
+            ...(typeof wins === "number" ? { wins } : {}),
+            ...(name ? { name } : {})
+        };
+        io.emit("profile:changed", publicProfile(accountId));
+    });
+
+    socket.on("profile:get", (accountId, callback) => {
+        if (typeof callback !== "function") return;
+        callback(publicProfile(accountId));
+    });
+
+    // ==========================
+    // Заявки в друзья
+    // ==========================
+
+    // Отправить заявку
+    socket.on("friend:request-send", ({ toAccountId, fromAccountId, fromName, fromIcon }, callback) => {
+        const cb = typeof callback === "function" ? callback : () => {};
+        if (!toAccountId || !fromAccountId || toAccountId === fromAccountId) {
+            return cb({ success: false, message: "Некорректный запрос" });
+        }
+
+        if (!friendRequests[toAccountId]) friendRequests[toAccountId] = [];
+        const already = friendRequests[toAccountId].some((r) => r.fromAccountId === fromAccountId);
+        if (!already) {
+            friendRequests[toAccountId].push({
+                fromAccountId,
+                fromName: fromName || "Игрок",
+                fromIcon: fromIcon || null,
+                createdAt: Date.now()
+            });
+        }
+
+        const targetSocketId = presence[toAccountId]?.socketId;
+        if (targetSocketId) {
+            io.to(targetSocketId).emit("friend:request-received", {
+                fromAccountId,
+                fromName: fromName || "Игрок",
+                fromIcon: fromIcon || null
+            });
+        }
+
+        cb({ success: true });
+    });
+
+    // Отменить свою отправленную заявку (повторное нажатие "Дружить")
+    socket.on("friend:request-cancel", ({ toAccountId, fromAccountId }) => {
+        if (!toAccountId || !friendRequests[toAccountId]) return;
+        friendRequests[toAccountId] = friendRequests[toAccountId].filter(
+            (r) => r.fromAccountId !== fromAccountId
+        );
+    });
+
+    // Получить свои входящие заявки (вкладка "Заявки")
+    socket.on("friend:get-requests", (accountId, callback) => {
+        if (typeof callback !== "function") return;
+        callback(friendRequests[accountId] || []);
+    });
+
+    // Принять/отклонить заявку
+    socket.on("friend:request-respond", ({ toAccountId, fromAccountId, accepted }, callback) => {
+        const cb = typeof callback === "function" ? callback : () => {};
+
+        if (friendRequests[toAccountId]) {
+            friendRequests[toAccountId] = friendRequests[toAccountId].filter(
+                (r) => r.fromAccountId !== fromAccountId
+            );
+        }
+
+        if (accepted) {
+            const requesterSocketId = presence[fromAccountId]?.socketId;
+            if (requesterSocketId) {
+                io.to(requesterSocketId).emit("friend:request-accepted", {
+                    byAccountId: toAccountId,
+                    byName:
+                        presence[toAccountId]?.name ||
+                        accountProfiles[toAccountId]?.name ||
+                        "Игрок"
+                });
+            }
+        }
+
+        cb({ success: true });
     });
 
     // ==========================
@@ -409,6 +555,15 @@ io.on("connection", (socket) => {
         console.log(`🧩 Способности в ${roomCode}: ${room.abilitiesEnabled ? "разрешены" : "запрещены"}`);
     });
 
+    // Сложность игры: "easy" — как обычно (мэр не знает роли, роли погибших видны);
+    // "hard" — роли погибших никогда не раскрываются, только имя/причина смерти.
+    socket.on("set-difficulty", (roomCode, difficulty) => {
+        const room = RoomManager.getRoom(roomCode);
+        if (!room || room.mayor?.id !== socket.id) return;
+        room.difficulty = difficulty === "hard" ? "hard" : "easy";
+        console.log(`🎚️ Сложность в ${roomCode}: ${room.difficulty}`);
+    });
+
     socket.on("lobby-open", (roomCode) => {
         const room = RoomManager.getRoom(roomCode);
         if (!room) return;
@@ -583,7 +738,7 @@ io.on("connection", (socket) => {
             return;
         }
 
-        if (target.role === "mafia" || target.role === "otez") {
+        if (target.role === "mafia" || target.role === "otez" || target.role === "vor") {
             socket.emit("night-action-error", { message: "Мафия не может выбрать своего союзника." });
             return;
         }
@@ -1182,19 +1337,32 @@ io.on("connection", (socket) => {
     // ========== ИГРА (GameFlowManager) ==========
 
     function publicPlayers(room) {
+        // Лёгкий режим: роль погибшего игрока раскрывается всем (как в обычной мафии).
+        // Сложный режим: роль не раскрывается никогда, даже после смерти.
+        const isEasy = room.difficulty !== "hard";
         return room.players.map((p) => ({
             id: p.id,
             name: p.name,
             avatar: p.avatar,
             alive: p.alive !== false,
-            // Роль сюда намеренно НЕ включена — даже мэр не должен знать,
-            // кто есть кто, до тех пор пока игрок не будет казнён/убит.
+            role: !p.alive && isEasy ? p.role : undefined,
+            // Мэр никогда не знает роли живых игроков — независимо от сложности.
             readyForGame: !!p.readyForGame
         }));
     }
 
     function emitPhase(roomCode, data) {
         io.to(roomCode).emit("game-phase", data);
+    }
+
+    // Единая точка завершения игры: считает "Игрока матча" и рассылает результат.
+    function endGame(roomCode, win) {
+        const room = RoomManager.getRoom(roomCode);
+        if (!room) return;
+        room.phase = "ended";
+        room.winner = win;
+        const mvp = GameFlowManager.getMVP(roomCode, win);
+        emitPhase(roomCode, { phase: "ended", winner: win, mvp, players: publicPlayers(room) });
     }
 
     function broadcastNight(roomCode, night) {
@@ -1318,17 +1486,34 @@ io.on("connection", (socket) => {
                 });
             });
 
+        const isEasy = room.difficulty !== "hard";
+        const formattedResults = results
+            .filter(
+                (r) => !r.privateTo || r.type === "death" || r.type === "saved" || r.type === "block"
+            )
+            .map((r) => {
+                if (r.type !== "death") return r;
+                if (isEasy) {
+                    const roleName = ROLE_META[r.role]?.name || r.role;
+                    return { ...r, text: `${r.name} погиб этой ночью. Роль: ${roleName}` };
+                }
+                const killerLabel = KILLER_LABELS[r.killedBy] || "неизвестного";
+                return {
+                    ...r,
+                    role: undefined,
+                    text: `${r.name} погиб этой ночью от руки ${killerLabel}.`
+                };
+            });
+
         emitPhase(roomCode, {
             phase: "morning",
-            results: results.filter(
-                (r) => !r.privateTo || r.type === "death" || r.type === "saved" || r.type === "block"
-            ),
+            results: formattedResults,
             players: publicPlayers(room)
         });
 
         const win = GameFlowManager.checkWin(roomCode);
         if (win) {
-            emitPhase(roomCode, { phase: "ended", winner: win });
+            endGame(roomCode, win);
         }
     });
 
@@ -1389,7 +1574,7 @@ io.on("connection", (socket) => {
         setTimeout(() => {
             const win = GameFlowManager.checkWin(roomCode);
             if (win) {
-                emitPhase(roomCode, { phase: "ended", winner: win });
+                endGame(roomCode, win);
                 return;
             }
 
@@ -1412,6 +1597,12 @@ io.on("connection", (socket) => {
         const executed = GameFlowManager.executePending(roomCode);
         if (!executed) return;
 
+        const isEasy = room.difficulty !== "hard";
+        const roleName = ROLE_META[executed.role]?.name || executed.role;
+        const executedText = isEasy
+            ? `${executed.name} казнён! Роль: ${roleName}`
+            : `Игрок ${executed.name} казнён!`;
+
         io.to(executed.id).emit("you-died", {
             reason: "Город приговорил вас к казни.",
             killedBy: "execution"
@@ -1419,14 +1610,22 @@ io.on("connection", (socket) => {
 
         emitPhase(roomCode, {
             phase: "vote_result",
-            voteResult: { type: "executed", executed },
+            voteResult: {
+                type: "executed",
+                executed: {
+                    id: executed.id,
+                    name: executed.name,
+                    role: isEasy ? executed.role : undefined,
+                    text: executedText
+                }
+            },
             players: publicPlayers(room)
         });
 
         setTimeout(() => {
             const win = GameFlowManager.checkWin(roomCode);
             if (win) {
-                emitPhase(roomCode, { phase: "ended", winner: win });
+                endGame(roomCode, win);
                 return;
             }
 
@@ -1466,10 +1665,7 @@ io.on("connection", (socket) => {
         if (!room || room.mayor?.id !== socket.id) return;
 
         GameFlowManager.mayorForceWin(roomCode, side, reason);
-        emitPhase(roomCode, {
-            phase: "ended",
-            winner: { side, label: side, reason }
-        });
+        endGame(roomCode, { winner: side, label: side, reason });
     });
 
     // "Играть снова" — только мэр. Возвращает ВСЕХ (мэра, живых и уже

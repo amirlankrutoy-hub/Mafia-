@@ -2,14 +2,17 @@ import { useMemo, useState } from "react";
 import roles from "../data/roles";
 import { ROLE_PRICES } from "../data/shopData";
 import { ownsRole } from "../services/wallet";
+import { useLanguage } from "../context/LanguageContext";
 
 export default function PartySetup({
     players,
     onStart
 }) {
+    const { t } = useLanguage();
 
     const [selectedRoles, setSelectedRoles] = useState({});
     const [abilitiesEnabled, setAbilitiesEnabled] = useState(true);
+    const [difficulty, setDifficulty] = useState("easy");
 
     const totalSelected = useMemo(() => {
 
@@ -126,6 +129,39 @@ export default function PartySetup({
       </div>
 
       <div className="flex flex-col items-center gap-4 mt-16 pb-10">
+        <div className="flex flex-col items-center gap-2 bg-zinc-900/80 border border-yellow-700/40 rounded-xl px-5 py-4">
+          <span className="text-sm font-bold text-gray-200 uppercase tracking-wider">
+            {t("difficulty")}
+          </span>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setDifficulty("easy")}
+              className={`px-6 py-2 rounded-lg text-sm font-bold uppercase tracking-wider transition ${
+                difficulty === "easy"
+                  ? "bg-yellow-500 text-black"
+                  : "bg-zinc-800 text-gray-300 border border-yellow-700/30"
+              }`}
+            >
+              {t("difficulty_easy")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setDifficulty("hard")}
+              className={`px-6 py-2 rounded-lg text-sm font-bold uppercase tracking-wider transition ${
+                difficulty === "hard"
+                  ? "bg-red-700 text-white"
+                  : "bg-zinc-800 text-gray-300 border border-yellow-700/30"
+              }`}
+            >
+              {t("difficulty_hard")}
+            </button>
+          </div>
+          <p className="max-w-md text-center text-xs text-gray-400 mt-1">
+            {difficulty === "easy" ? t("difficulty_easy_desc") : t("difficulty_hard_desc")}
+          </p>
+        </div>
+
         <label className="flex items-center gap-3 bg-zinc-900/80 border border-yellow-700/40 rounded-xl px-5 py-3 cursor-pointer select-none">
           <input
             type="checkbox"
@@ -134,13 +170,13 @@ export default function PartySetup({
             className="w-5 h-5 accent-yellow-500"
           />
           <span className="text-sm font-bold text-gray-200">
-            Разрешить способности в этой игре
+            {t("abilities_enabled")}
           </span>
         </label>
 
         <button
           type="button"
-          onClick={() => onStart(selectedRoles, abilitiesEnabled)}
+          onClick={() => onStart(selectedRoles, abilitiesEnabled, difficulty)}
           disabled={totalSelected !== players.length}
           className={`px-12 py-5 rounded-xl text-2xl font-bold transition ${
             totalSelected === players.length

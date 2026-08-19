@@ -16,3 +16,19 @@ export function setSelectedAvatar(avatarPath) {
   localStorage.setItem(AVATAR_KEY, avatarPath);
   window.dispatchEvent(new CustomEvent("mafia-avatar-changed"));
 }
+
+// ---------- Любимая роль (выбирается игроком, видна другим в профиле) ----------
+const FAVORITE_ROLE_KEY = "mafia_favorite_role_v1";
+
+export function getFavoriteRole() {
+  return localStorage.getItem(FAVORITE_ROLE_KEY) || null;
+}
+
+export function setFavoriteRole(roleId) {
+  if (roleId) {
+    localStorage.setItem(FAVORITE_ROLE_KEY, roleId);
+  } else {
+    localStorage.removeItem(FAVORITE_ROLE_KEY);
+  }
+  window.dispatchEvent(new CustomEvent("mafia-favorite-role-changed"));
+}

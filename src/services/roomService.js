@@ -95,6 +95,12 @@ export function setAbilitiesEnabled(roomCode, enabled) {
 
 }
 
+export function setDifficulty(roomCode, difficulty) {
+
+    socket.emit("set-difficulty", roomCode, difficulty);
+
+}
+
 export function onYourRole(callback) {
 
     socket.on("your-role", callback);

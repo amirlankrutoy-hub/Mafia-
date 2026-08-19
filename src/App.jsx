@@ -9,6 +9,7 @@ import Rules from './pages/Rules';
 import Shop from './pages/Shop';
 import AdminPanel from './pages/AdminPanel';
 import Friends from './pages/Friends';
+import ProfilePage from './pages/ProfilePage';
 import Achievements from './pages/Achievements';
 import AchievementToast from './components/AchievementToast';
 import ConnectionStatus from './components/ConnectionStatus';
@@ -19,6 +20,7 @@ import NotFound from './pages/NotFound';
 import NameModal from './components/NameModal';
 import StoryIntro from './components/StoryIntro';
 import { MusicProvider, useMusic } from './context/MusicContext';
+import { LanguageProvider } from './context/LanguageContext';
 
 function AppRoutes({ account, showModal, handleAccountReady }) {
   const userName = account?.name || '';
@@ -86,6 +88,7 @@ function AppRoutes({ account, showModal, handleAccountReady }) {
           <Route path="/rules" element={<Rules />} />
           <Route path="/shop" element={<Shop />} />
           <Route path="/friends" element={<Friends account={account} />} />
+          <Route path="/profile" element={<ProfilePage account={account} />} />
           <Route path="/achievements" element={<Achievements />} />
           <Route path="/admin" element={<AdminPanel />} />
           <Route path="*" element={<NotFound />} />
@@ -139,13 +142,15 @@ function App() {
   };
 
   return (
-    <MusicProvider>
-      <AppRoutes
-        account={account}
-        showModal={showModal}
-        handleAccountReady={handleAccountReady}
-      />
-    </MusicProvider>
+    <LanguageProvider>
+      <MusicProvider>
+        <AppRoutes
+          account={account}
+          showModal={showModal}
+          handleAccountReady={handleAccountReady}
+        />
+      </MusicProvider>
+    </LanguageProvider>
   );
 }
 

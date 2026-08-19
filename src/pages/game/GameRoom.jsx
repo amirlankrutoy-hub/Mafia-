@@ -9,6 +9,7 @@ import MayorExecutionScreen from "./MayorExecutionScreen";
 import roles from "../../data/roles";
 import { WIN_REWARDS } from "../../data/shopData";
 import { credit } from "../../services/wallet";
+import { useLanguage } from "../../context/LanguageContext";
 
 export default function GameRoom({
   roomCode,
@@ -17,6 +18,7 @@ export default function GameRoom({
   myRole,
   onLeaveToLobby
 }) {
+  const { t } = useLanguage();
   const [phase, setPhase] = useState("waiting_ready");
   const [players, setPlayers] = useState(initialPlayers || []);
   const [nightInfo, setNightInfo] = useState(null);
@@ -27,6 +29,8 @@ export default function GameRoom({
   const [pendingCandidate, setPendingCandidate] = useState(null);
   const [voteResult, setVoteResult] = useState(null);
   const [winner, setWinner] = useState(null);
+  const [mvp, setMvp] = useState(null);
+  const [mvpShown, setMvpShown] = useState(false);
   const [readyCount, setReadyCount] = useState(0);
   const [loadingText, setLoadingText] = useState("");
   const [privateInfo, setPrivateInfo] = useState(null);
@@ -55,6 +59,7 @@ export default function GameRoom({
       }
       if (data.voteResult) setVoteResult(data.voteResult);
       if (data.winner) setWinner(data.winner);
+      if (data.phase === "ended") setMvp(data.mvp || null);
       if (data.readyCount != null) setReadyCount(data.readyCount);
       if (data.loadingText) setLoadingText(data.loadingText);
     };
@@ -90,6 +95,17 @@ export default function GameRoom({
     setEarnedReward(amount);
   }, [winner, isMayor, myRole]);
 
+  // Экран "Игрок матча" держим 5 секунд, потом у мэра появляется "Играть снова".
+  useEffect(() => {
+    if (!winner) {
+      setMvpShown(false);
+      return;
+    }
+    const delay = mvp ? 5000 : 0;
+    const t = setTimeout(() => setMvpShown(true), delay);
+    return () => clearTimeout(t);
+  }, [winner, mvp]);
+
   // Игрока убили (ночью, на голосовании или рукой мэра) —
   // показываем скример, затем отправляем его в лобби.
   // Мэра это не касается: у него роли и смерти нет.
@@ -110,10 +126,10 @@ export default function GameRoom({
     return (
       <div className="fixed inset-0 z-[300] bg-black flex flex-col items-center justify-center text-center p-8">
         <h1 className="text-5xl text-yellow-400 font-black mb-4">
-          Игра окончена
+          {t("game_over")}
         </h1>
         <p className="text-3xl text-white">
-          Победа: {winner.label || winner.winner}
+          {t("victory")}: {winner.label || winner.winner}
         </p>
         {winner.reason && (
           <p className="text-gray-400 mt-4">{winner.reason}</p>
@@ -123,7 +139,39 @@ export default function GameRoom({
             + {earnedReward} Мафио начислено на ваш счёт
           </p>
         )}
-        {isMayor && (
+
+        {mvp && (
+          <div className="mt-10 flex flex-col items-center gap-3">
+            <div className="relative h-32 w-32 rounded-full overflow-hidden border-4 border-[#d4af37] shadow-[0_0_30px_rgba(212,175,55,0.6)]">
+              <img
+                src={mvp.avatar || "/avatars/avatar1.svg"}
+                alt={mvp.name}
+                className="h-full w-full object-cover"
+              />
+            </div>
+            <p className="text-2xl font-bold text-white">{mvp.name}</p>
+            <p className="mvp-blink text-3xl font-black uppercase tracking-widest">
+              {t("player_of_match")}
+            </p>
+            <style>{`
+              .mvp-blink {
+                animation: mvpBlink 1s infinite alternate;
+              }
+              @keyframes mvpBlink {
+                0% { color: #8b0000; text-shadow: 0 0 10px #8b0000, 0 0 20px #8b0000; }
+                100% { color: #d4af37; text-shadow: 0 0 14px #d4af37, 0 0 28px #d4af37; }
+              }
+            `}</style>
+          </div>
+        )}
+
+        {isMayor && !mvpShown && (
+          <p className="mt-10 text-sm text-gray-500 animate-pulse">
+            Определяем игрока матча...
+          </p>
+        )}
+
+        {isMayor && mvpShown && (
           <button
             type="button"
             disabled={playAgainState === "sending"}
@@ -158,7 +206,7 @@ export default function GameRoom({
             }}
             className="mt-10 rounded-xl bg-gradient-to-r from-[#8b0000] to-[#5c0000] border border-[#d4af37] px-10 py-4 text-xl font-bold text-[#f3e5ab] hover:brightness-125 disabled:opacity-50"
           >
-            {playAgainState === "sending" ? "Отправка..." : "Играть снова"}
+            {playAgainState === "sending" ? t("sending") : t("play_again")}
           </button>
         )}
       </div>
@@ -286,9 +334,9 @@ export default function GameRoom({
               : "bg-red-700 hover:bg-red-600 text-white"
           }`}
         >
-          {readySent ? "Ожидание остальных..." : "Я готов"}
+          {readySent ? t("waiting_for_players") : t("ready")}
         </button>
-        <p className="text-gray-500">Готовы: {readyCount}</p>
+        <p className="text-gray-500">{t("ready_count")}: {readyCount}</p>
       </div>
     );
   }

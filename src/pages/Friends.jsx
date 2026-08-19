@@ -1,26 +1,49 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faMagnifyingGlass, faUserPlus, faDoorOpen, faCircle } from '@fortawesome/free-solid-svg-icons';
+import {
+  faMagnifyingGlass,
+  faUserPlus,
+  faDoorOpen,
+  faCircle,
+  faCheck,
+  faXmark,
+  faBell
+} from '@fortawesome/free-solid-svg-icons';
 import { socket } from '../socket';
 import {
   getFriends,
   removeFriend,
   addFriend,
-  getRecentPlayers
+  getRecentPlayers,
+  isSentRequest,
+  markRequestSent,
+  unmarkRequestSent
 } from '../services/friends';
 import {
   announcePresence,
   fetchBulkStatus,
   searchByAccountId,
   knockOnRoom,
-  onFriendJoinDecision
+  onFriendJoinDecision,
+  sendFriendRequest,
+  cancelFriendRequest,
+  getFriendRequests,
+  respondFriendRequest,
+  onFriendRequestReceived,
+  onFriendRequestAccepted,
+  onProfileChanged
 } from '../services/presence';
+import { getSelectedAvatar } from '../services/profile';
+import PlayerProfileModal from '../components/PlayerProfileModal';
+
+const DEFAULT_ICON = '/avatars/avatar1.svg';
 
 const TABS = [
   { id: 'friends', label: 'Друзья' },
   { id: 'recent', label: 'Недавние' },
-  { id: 'search', label: 'Поиск по ID' }
+  { id: 'search', label: 'Поиск по ID' },
+  { id: 'requests', label: 'Заявки' }
 ];
 
 function StatusBadge({ status }) {
@@ -46,6 +69,9 @@ const Friends = ({ account }) => {
   const [searchError, setSearchError] = useState('');
   const [knocking, setKnocking] = useState(null); // { id, roomCode }
   const [friendsVersion, setFriendsVersion] = useState(0);
+  const [requests, setRequests] = useState([]);
+  const [openProfileId, setOpenProfileId] = useState(null);
+  const [sentVersion, setSentVersion] = useState(0);
 
   const friends = getFriends();
   const recent = getRecentPlayers();
@@ -69,7 +95,7 @@ const Friends = ({ account }) => {
     list.forEach((s) => {
       map[s.id] = s;
     });
-    setStatuses(map);
+    setStatuses((prev) => ({ ...prev, ...map }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [friendsVersion]);
 
@@ -78,6 +104,49 @@ const Friends = ({ account }) => {
     const interval = setInterval(refreshStatuses, 5000);
     return () => clearInterval(interval);
   }, [refreshStatuses]);
+
+  const loadRequests = useCallback(async () => {
+    if (!account) return;
+    const list = await getFriendRequests(account.id);
+    setRequests(list || []);
+  }, [account]);
+
+  useEffect(() => {
+    loadRequests();
+  }, [loadRequests]);
+
+  // Живые уведомления о новых заявках
+  useEffect(() => {
+    const off = onFriendRequestReceived((req) => {
+      setRequests((prev) => {
+        if (prev.some((r) => r.fromAccountId === req.fromAccountId)) return prev;
+        return [...prev, { ...req, createdAt: Date.now() }];
+      });
+    });
+    return off;
+  }, []);
+
+  // Кто-то принял мою заявку — добавляем его себе в друзья
+  useEffect(() => {
+    const off = onFriendRequestAccepted(({ byAccountId, byName }) => {
+      addFriend({ id: byAccountId, name: byName });
+      unmarkRequestSent(byAccountId);
+      setSentVersion((v) => v + 1);
+      alert(`${byName} принял(а) вашу заявку в друзья!`);
+    });
+    return off;
+  }, []);
+
+  // Живое обновление иконок при смене профиля другим игроком
+  useEffect(() => {
+    const off = onProfileChanged((p) => {
+      setStatuses((prev) => ({
+        ...prev,
+        [p.id]: { ...(prev[p.id] || { id: p.id }), icon: p.icon, favoriteRole: p.favoriteRole, wins: p.wins }
+      }));
+    });
+    return off;
+  }, []);
 
   useEffect(() => {
     const off = onFriendJoinDecision(({ accepted, roomCode }) => {
@@ -102,8 +171,8 @@ const Friends = ({ account }) => {
       return;
     }
     const result = await searchByAccountId(id);
-    if (!result?.online) {
-      setSearchError('Игрок с таким ID сейчас не в сети или не найден');
+    if (!result?.online && !result?.name) {
+      setSearchError('Игрок с таким ID не найден');
       return;
     }
     setSearchResult(result);
@@ -125,14 +194,66 @@ const Friends = ({ account }) => {
     }
   };
 
+  const handleToggleFriendRequest = async (person) => {
+    if (!account) return;
+    const alreadySent = isSentRequest(person.id);
+
+    if (alreadySent) {
+      cancelFriendRequest({ toAccountId: person.id, fromAccountId: account.id });
+      unmarkRequestSent(person.id);
+      setSentVersion((v) => v + 1);
+      return;
+    }
+
+    markRequestSent(person.id);
+    setSentVersion((v) => v + 1);
+    const res = await sendFriendRequest({
+      toAccountId: person.id,
+      fromAccountId: account.id,
+      fromName: account.name,
+      fromIcon: getSelectedAvatar()
+    });
+    if (!res?.success) {
+      unmarkRequestSent(person.id);
+      setSentVersion((v) => v + 1);
+      alert(res?.message || 'Не удалось отправить заявку');
+    }
+  };
+
+  const handleRespond = async (req, accepted) => {
+    if (!account) return;
+    await respondFriendRequest({
+      myAccountId: account.id,
+      fromAccountId: req.fromAccountId,
+      accepted
+    });
+    setRequests((prev) => prev.filter((r) => r.fromAccountId !== req.fromAccountId));
+    if (accepted) {
+      addFriend({ id: req.fromAccountId, name: req.fromName });
+    }
+  };
+
   const renderRow = (person) => {
     const status = statuses[person.id];
+    const sent = isSentRequest(person.id);
+    // eslint-disable-next-line no-unused-expressions
+    sentVersion; // подписка на перерисовку при смене состояния заявки
+
     return (
       <div
         key={person.id}
         className="flex items-center justify-between gap-3 rounded-xl border border-[#d4af37]/25 bg-[#140b07]/70 px-4 py-3"
       >
-        <div className="min-w-0 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setOpenProfileId(person.id)}
+          className="min-w-0 flex items-center gap-2.5 text-left"
+        >
+          <img
+            src={status?.icon || DEFAULT_ICON}
+            alt=""
+            className="h-9 w-9 shrink-0 rounded-full border border-[#d4af37]/50 object-cover"
+          />
           <FontAwesomeIcon
             icon={faCircle}
             className={`text-[8px] ${status?.online ? 'text-emerald-400' : 'text-zinc-600'}`}
@@ -141,7 +262,7 @@ const Friends = ({ account }) => {
             <div className="text-sm font-bold text-[#f3e5ab] truncate">{person.name}</div>
             <div className="text-[10px] text-[#8b6b12] font-mono">ID: {person.id}</div>
           </div>
-        </div>
+        </button>
 
         <div className="flex items-center gap-2 shrink-0">
           <StatusBadge status={status} />
@@ -159,11 +280,16 @@ const Friends = ({ account }) => {
           {tab !== 'friends' && (
             <button
               type="button"
-              onClick={() => addFriend(person)}
-              className="rounded-lg border border-[#d4af37]/50 px-2.5 py-1.5 text-[10px] uppercase text-[#d4af37]"
-              title="Добавить в друзья"
+              onClick={() => handleToggleFriendRequest(person)}
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[10px] font-bold uppercase border transition ${
+                sent
+                  ? 'bg-zinc-700/60 text-zinc-300 border-zinc-600'
+                  : 'border-[#d4af37]/50 text-[#d4af37] hover:bg-[#d4af37]/10'
+              }`}
+              title={sent ? 'Отменить заявку' : 'Отправить заявку в друзья'}
             >
               <FontAwesomeIcon icon={faUserPlus} />
+              {sent ? 'Заявка отправлена' : 'Дружить'}
             </button>
           )}
           {tab === 'friends' && (
@@ -192,19 +318,25 @@ const Friends = ({ account }) => {
         </p>
       )}
 
-      <div className="mt-5 flex justify-center gap-2">
+      <div className="mt-5 flex flex-wrap justify-center gap-2">
         {TABS.map((t) => (
           <button
             key={t.id}
             type="button"
             onClick={() => setTab(t.id)}
-            className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide border transition ${
+            className={`relative px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide border transition ${
               tab === t.id
                 ? 'bg-[#d4af37]/15 text-[#d4af37] border-[#d4af37]/50'
                 : 'text-[#c5a059] border-transparent hover:bg-[#d4af37]/5'
             }`}
           >
+            {t.id === 'requests' && <FontAwesomeIcon icon={faBell} className="mr-1.5" />}
             {t.label}
+            {t.id === 'requests' && requests.length > 0 && (
+              <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[9px] font-black text-white">
+                {requests.length}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -255,7 +387,68 @@ const Friends = ({ account }) => {
             )}
           </div>
         )}
+
+        {tab === 'requests' &&
+          (requests.length ? (
+            requests.map((req) => (
+              <div
+                key={req.fromAccountId}
+                className="flex items-center justify-between gap-3 rounded-xl border border-[#d4af37]/25 bg-[#140b07]/70 px-4 py-3"
+              >
+                <button
+                  type="button"
+                  onClick={() => setOpenProfileId(req.fromAccountId)}
+                  className="min-w-0 flex items-center gap-2.5 text-left"
+                >
+                  <img
+                    src={req.fromIcon || DEFAULT_ICON}
+                    alt=""
+                    className="h-9 w-9 shrink-0 rounded-full border border-[#d4af37]/50 object-cover"
+                  />
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold text-[#f3e5ab]">
+                      Игрок {req.fromName} хочет стать вашим другом!
+                    </div>
+                    <div className="text-[10px] text-[#8b6b12] font-mono">
+                      ID: {req.fromAccountId}
+                    </div>
+                  </div>
+                </button>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleRespond(req, true)}
+                    className="flex items-center gap-1.5 rounded-lg bg-emerald-700/80 px-3 py-1.5 text-[10px] font-bold uppercase text-white border border-emerald-400/40"
+                  >
+                    <FontAwesomeIcon icon={faCheck} />
+                    Принять
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleRespond(req, false)}
+                    className="flex items-center gap-1.5 rounded-lg border border-red-500/40 px-3 py-1.5 text-[10px] font-bold uppercase text-red-400"
+                  >
+                    <FontAwesomeIcon icon={faXmark} />
+                    Отклонить
+                  </button>
+                </div>
+              </div>
+            ))
+          ) : (
+            <p className="text-center text-sm text-[#8b6b12] italic mt-8">
+              Пока нет входящих заявок в друзья.
+            </p>
+          ))}
       </div>
+
+      {openProfileId && (
+        <PlayerProfileModal
+          accountId={openProfileId}
+          fallbackName={statuses[openProfileId]?.name}
+          onClose={() => setOpenProfileId(null)}
+        />
+      )}
     </div>
   );
 };

@@ -4,7 +4,8 @@ import {
   ROLE_PRICES,
   EMOJIS,
   DECORATIONS,
-  ADMIN_DECORATION
+  ADMIN_DECORATION,
+  isNewRole
 } from "../data/shopData";
 import {
   getWallet,
@@ -128,6 +129,11 @@ export default function Shop() {
                 key={role.id}
                 className="relative rounded-xl border border-[#c5a059]/40 bg-[#120a07] overflow-hidden"
               >
+                {isNewRole(role.id) && (
+                  <span className="absolute top-2 right-2 z-10 rounded-full bg-gradient-to-r from-[#8b0000] to-[#d4af37] px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-white shadow-[0_2px_8px_rgba(0,0,0,0.8)] animate-pulse">
+                    New
+                  </span>
+                )}
                 {/* Замок только на картинке — не перекрывает кнопку покупки */}
                 <div className="relative h-40 w-full">
                   <img

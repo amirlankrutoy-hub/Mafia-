@@ -4,6 +4,8 @@ import Lobby from "../components/Lobby";
 import PartySetup from "../components/PartySetup";
 import RoleRoulette from "../components/RoleRoulette";
 import RoomCodeModal from "../components/RoomCodeModal";
+import BackgroundVideo from "../components/BackgroundVideo";
+import { useLanguage } from "../context/LanguageContext";
 import GameRoom from "./game/GameRoom";
 
 import {
@@ -11,6 +13,7 @@ import {
     joinRoom,
     setupRoles,
     setAbilitiesEnabled,
+    setDifficulty,
     startGame,
     onPlayersUpdated,
     onYourRole,
@@ -34,6 +37,7 @@ const ADMIN_ACCOUNT_IDS = ["777777", "1111111"];
 
 
 export default function OnlinePlay({ account }) {
+    const { t } = useLanguage();
     const [incomingRequest, setIncomingRequest] = useState(null);
 
     // -------------------------
@@ -588,13 +592,15 @@ export default function OnlinePlay({ account }) {
     // НАЧАТЬ ИГРУ
     // ==========================
 
-    const handlePartyStart = (roles, abilitiesEnabled = true) => {
+    const handlePartyStart = (roles, abilitiesEnabled = true, difficulty = "easy") => {
 
         setSelectedRoles(roles);
 
         setupRoles(roomCode, roles);
 
         setAbilitiesEnabled(roomCode, abilitiesEnabled);
+
+        setDifficulty(roomCode, difficulty);
 
         // только после нажатия "Начать игру"
         // игрокам придет событие waiting-party-setup
@@ -790,27 +796,29 @@ export default function OnlinePlay({ account }) {
 
             {view === "menu" && (
 
-                <div className="min-h-screen bg-black flex flex-col items-center pt-32 gap-8">
+                <BackgroundVideo>
+                    <div className="min-h-screen flex flex-col items-center pt-32 gap-8">
 
-                    <h1 className="text-6xl text-center font-bold text-yellow-500">
-                        MAFIA PLAY
-                    </h1>
+                        <h1 className="text-6xl text-center font-bold text-yellow-500">
+                            {t("app_title")}
+                        </h1>
 
-                    <button
-                        onClick={handleCreate}
-                        className="bg-gradient-to-r from-[#8b0000] to-[#5c0000] border border-amber-300 border-[1px] px-10 py-4 rounded-xl text-white text-xl"
-                    >
-                        Создать комнату
-                    </button>
+                        <button
+                            onClick={handleCreate}
+                            className="bg-gradient-to-r from-[#8b0000] to-[#5c0000] border border-amber-300 border-[1px] px-10 py-4 rounded-xl text-white text-xl"
+                        >
+                            {t("create_room")}
+                        </button>
 
-                    <button
-                        onClick={handleJoin}
-                        className=" border border-amber-300 border-[1px] px-10 py-4 rounded-xl text-white text-xl"
-                    >
-                        Войти в комнату
-                    </button>
+                        <button
+                            onClick={handleJoin}
+                            className=" border border-amber-300 border-[1px] px-10 py-4 rounded-xl text-white text-xl"
+                        >
+                            {t("join_room")}
+                        </button>
 
-                </div>
+                    </div>
+                </BackgroundVideo>
 
             )}
 

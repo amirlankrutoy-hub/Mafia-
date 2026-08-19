@@ -10,9 +10,19 @@ export const ROLE_PRICES = {
   poklon: 1000,
   stukach: 1000,
   otez: 1500,
+  vor: 1050, // на 30% дешевле Крёстного отца
   manyak: 1600,
   potroshitel: 1400
 };
+
+// ---------- Метка "NEW" на карточке роли ----------
+// Показывается только до указанной даты.
+export const NEW_ROLE_IDS = ["vor"];
+export const NEW_ROLE_UNTIL = new Date("2026-09-10T23:59:59");
+
+export function isNewRole(roleId) {
+  return NEW_ROLE_IDS.includes(roleId) && new Date() < NEW_ROLE_UNTIL;
+}
 
 // ---------- Эмодзи ----------
 // Отправляются в лобби/игре и всплывают над карточкой игрока на 3 секунды.
