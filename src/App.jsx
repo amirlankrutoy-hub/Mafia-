@@ -21,6 +21,8 @@ import NameModal from './components/NameModal';
 import StoryIntro from './components/StoryIntro';
 import { MusicProvider, useMusic } from './context/MusicContext';
 import { LanguageProvider } from './context/LanguageContext';
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import Terms from "./pages/Terms";
 
 function AppRoutes({ account, showModal, handleAccountReady }) {
   const userName = account?.name || '';
@@ -92,6 +94,8 @@ function AppRoutes({ account, showModal, handleAccountReady }) {
           <Route path="/achievements" element={<Achievements />} />
           <Route path="/admin" element={<AdminPanel />} />
           <Route path="*" element={<NotFound />} />
+          <Route path="/privacy" element={<PrivacyPolicy />} />
+          <Route path="/terms" element={<Terms />} />
         </Routes>
       </main>
 
@@ -122,7 +126,7 @@ function App() {
       }
       setAccount(saved);
       setShowModal(false);
-      import('./services/achievementsService').then((m) => m.recordEvent('daily_login')).catch(() => {});
+      import('./services/achievementsService').then((m) => m.recordEvent('daily_login')).catch(() => { });
     } else if (location.pathname !== '/online') {
       setShowModal(true);
     }
@@ -138,7 +142,7 @@ function App() {
     }
     setAccount(acc);
     setShowModal(false);
-    import('./services/achievementsService').then((m) => m.recordEvent('daily_login')).catch(() => {});
+    import('./services/achievementsService').then((m) => m.recordEvent('daily_login')).catch(() => { });
   };
 
   return (

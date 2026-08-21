@@ -197,7 +197,7 @@ function AdminFooter() {
   }
 
   return (
-    <footer className="mt-16 border-t border-[#c5a059]/10 pt-6 pb-10 text-center">
+    <footer className="mt-16 border-t border-[#c5a059]/10 pt-6 pb-10 text-center flex gap-[20px]">
       <button
         type="button"
         onClick={() => setOpen(true)}
@@ -205,6 +205,9 @@ function AdminFooter() {
       >
         Mafia Play · панель администратора
       </button>
+      <Link to="/privacy" className='text-[10px] uppercase tracking-[0.3em] text-[#c5a059]/30 hover:text-[#c5a059]/60'>Политика конфиденциальности</Link>
+      
+      <Link to="/terms" className='text-[10px] uppercase tracking-[0.3em] text-[#c5a059]/30 hover:text-[#c5a059]/60'>Пользовательское соглашение</Link>
 
       {open && (
         <div className="fixed inset-0 z-[500] bg-black/85 flex items-center justify-center p-4">
