@@ -8,7 +8,9 @@ import {
   faCircle,
   faCheck,
   faXmark,
-  faBell
+  faBell,
+  faEarthAmericas,
+  faTrophy
 } from '@fortawesome/free-solid-svg-icons';
 import { socket } from '../socket';
 import {
@@ -32,7 +34,8 @@ import {
   respondFriendRequest,
   onFriendRequestReceived,
   onFriendRequestAccepted,
-  onProfileChanged
+  onProfileChanged,
+  getLeaderboard
 } from '../services/presence';
 import { getSelectedAvatar } from '../services/profile';
 import PlayerProfileModal from '../components/PlayerProfileModal';
@@ -43,7 +46,8 @@ const TABS = [
   { id: 'friends', label: 'Друзья' },
   { id: 'recent', label: 'Недавние' },
   { id: 'search', label: 'Поиск по ID' },
-  { id: 'requests', label: 'Заявки' }
+  { id: 'requests', label: 'Заявки' },
+  { id: 'world', label: 'Мир' }
 ];
 
 function StatusBadge({ status }) {
@@ -72,6 +76,8 @@ const Friends = ({ account }) => {
   const [requests, setRequests] = useState([]);
   const [openProfileId, setOpenProfileId] = useState(null);
   const [sentVersion, setSentVersion] = useState(0);
+  const [leaderboard, setLeaderboard] = useState([]);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
 
   const friends = getFriends();
   const recent = getRecentPlayers();
@@ -114,6 +120,22 @@ const Friends = ({ account }) => {
   useEffect(() => {
     loadRequests();
   }, [loadRequests]);
+
+  // Топ-200 по победам — загружаем при открытии вкладки "Мир"
+  useEffect(() => {
+    if (tab !== 'world') return;
+    let cancelled = false;
+    setLeaderboardLoading(true);
+    getLeaderboard().then((list) => {
+      if (!cancelled) {
+        setLeaderboard(list);
+        setLeaderboardLoading(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [tab]);
 
   // Живые уведомления о новых заявках
   useEffect(() => {
@@ -166,17 +188,23 @@ const Friends = ({ account }) => {
     setSearchResult(null);
     const id = searchId.trim();
     if (!id) return;
+    if (!/^\d{6}$/.test(id)) {
+      setSearchError('ID должен состоять из 6 цифр');
+      return;
+    }
     if (account && id === account.id) {
       setSearchError('Это ваш собственный ID');
       return;
     }
     const result = await searchByAccountId(id);
-    if (!result?.online && !result?.name) {
-      setSearchError('Игрок с таким ID не найден');
-      return;
-    }
-    setSearchResult(result);
-    setStatuses((prev) => ({ ...prev, [result.id]: result }));
+    // ID — это просто 6 случайных цифр без общего реестра аккаунтов на сервере,
+    // поэтому "не найден" мы никогда не показываем: сервер физически не может
+    // подтвердить, существует ли аккаунт с таким ID, если человек ни разу не
+    // заходил на сайт с момента последнего перезапуска сервера (или ещё не
+    // заходил вовсе). Раньше это приводило к тому, что заявку невозможно было
+    // отправить офлайн-игроку — поиск просто отказывал.
+    setSearchResult({ ...result, name: result?.name || `Игрок #${id}` });
+    setStatuses((prev) => ({ ...prev, [id]: result }));
   };
 
   const handleKnock = async (status) => {
@@ -331,6 +359,7 @@ const Friends = ({ account }) => {
             }`}
           >
             {t.id === 'requests' && <FontAwesomeIcon icon={faBell} className="mr-1.5" />}
+            {t.id === 'world' && <FontAwesomeIcon icon={faEarthAmericas} className="mr-1.5" />}
             {t.label}
             {t.id === 'requests' && requests.length > 0 && (
               <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[9px] font-black text-white">
@@ -440,6 +469,60 @@ const Friends = ({ account }) => {
               Пока нет входящих заявок в друзья.
             </p>
           ))}
+
+        {tab === 'world' && (
+          <div>
+            {leaderboardLoading ? (
+              <p className="text-center text-sm text-[#8b6b12] italic mt-8">Загрузка рейтинга...</p>
+            ) : leaderboard.length ? (
+              <div className="space-y-2">
+                {leaderboard.map((p, i) => (
+                  <button
+                    type="button"
+                    key={p.id}
+                    onClick={() => setOpenProfileId(p.id)}
+                    className={`w-full flex items-center gap-3 rounded-xl border px-4 py-2.5 text-left transition ${
+                      i < 3
+                        ? 'border-[#d4af37]/60 bg-[#d4af37]/10'
+                        : 'border-[#d4af37]/20 bg-[#140b07]/70'
+                    }`}
+                  >
+                    <span
+                      className={`w-7 shrink-0 text-center font-black ${
+                        i === 0
+                          ? 'text-yellow-400'
+                          : i === 1
+                          ? 'text-zinc-300'
+                          : i === 2
+                          ? 'text-amber-600'
+                          : 'text-[#8b6b12]'
+                      }`}
+                    >
+                      {i + 1}
+                    </span>
+                    <img
+                      src={p.icon || DEFAULT_ICON}
+                      alt=""
+                      className="h-9 w-9 shrink-0 rounded-full border border-[#d4af37]/50 object-cover"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-bold text-[#f3e5ab] truncate">{p.name}</div>
+                      <div className="text-[10px] text-[#8b6b12] font-mono">ID: {p.id}</div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0 text-[#d4af37] font-bold text-sm">
+                      <FontAwesomeIcon icon={faTrophy} className="text-[11px]" />
+                      {p.wins}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-center text-sm text-[#8b6b12] italic mt-8">
+                Пока никто не одержал ни одной победы — рейтинг пуст.
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {openProfileId && (

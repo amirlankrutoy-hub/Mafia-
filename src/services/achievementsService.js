@@ -57,7 +57,7 @@ function getStatValue(stats, path) {
   return path.split(".").reduce((acc, key) => (acc == null ? 0 : acc[key]), stats) || 0;
 }
 
-/** Проверяет все достижения и разблокирует новые, выдавая тени */
+/** Проверяет все достижения и разблокирует новые, выдавая кристаллы теней */
 function evaluateAndUnlock(state) {
   const newlyUnlocked = [];
 

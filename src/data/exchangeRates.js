@@ -1,4 +1,4 @@
-// exchangeRates.js — тарифы обмена теней на Мафио.
+// exchangeRates.js — тарифы обмена кристаллов теней на Токены.
 
 export const TENI_EXCHANGE_RATES = [
   { teni: 100, mafio: 1000 },

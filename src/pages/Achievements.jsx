@@ -100,7 +100,7 @@ const Achievements = () => {
 
                 {isDone ? (
                   <img
-                    src="/teni.png"
+                    src="/krital.svg"
                     alt=""
                     className="w-5 h-5 rounded-full shrink-0"
                   />

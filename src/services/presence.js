@@ -78,6 +78,21 @@ export function updateProfile({ accountId, icon, favoriteRole, wins, name }) {
   socket.emit("profile:update", { accountId, icon, favoriteRole, wins, name });
 }
 
+/** Засчитать себе победу (вызывать один раз в конце игры, если реально играл и победил) */
+export function registerWin(accountId) {
+  if (!accountId) return;
+  if (!socket.connected) socket.connect();
+  socket.emit("profile:register-win", accountId);
+}
+
+/** Топ-200 игроков по числу побед (вкладка "Мир") */
+export function getLeaderboard() {
+  return new Promise((resolve) => {
+    if (!socket.connected) socket.connect();
+    socket.emit("leaderboard:get", (list) => resolve(list || []));
+  });
+}
+
 /** Подписка: чей-то профиль изменился (например, сменил иконку) */
 export function onProfileChanged(callback) {
   socket.on("profile:changed", callback);

@@ -1,4 +1,4 @@
-// abilitiesShop.js — покупка способностей за тени и учёт "запаса" каждой (расходуются при использовании).
+// abilitiesShop.js — покупка способностей за кристаллы теней и учёт "запаса" каждой (расходуются при использовании).
 
 import { getAbility } from "../data/abilities";
 import { getTeniBalance, debitTeni } from "./teniWallet";

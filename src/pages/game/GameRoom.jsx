@@ -9,6 +9,7 @@ import MayorExecutionScreen from "./MayorExecutionScreen";
 import roles from "../../data/roles";
 import { WIN_REWARDS } from "../../data/shopData";
 import { credit } from "../../services/wallet";
+import { registerWin } from "../../services/presence";
 import { useLanguage } from "../../context/LanguageContext";
 
 export default function GameRoom({
@@ -16,6 +17,7 @@ export default function GameRoom({
   isMayor,
   players: initialPlayers,
   myRole,
+  account,
   onLeaveToLobby
 }) {
   const { t } = useLanguage();
@@ -93,6 +95,7 @@ export default function GameRoom({
     rewardGivenRef.current = true;
     credit(amount);
     setEarnedReward(amount);
+    if (account?.id) registerWin(account.id);
   }, [winner, isMayor, myRole]);
 
   // Экран "Игрок матча" держим 5 секунд, потом у мэра появляется "Играть снова".
@@ -312,13 +315,21 @@ export default function GameRoom({
   }
 
   if (phase === "waiting_ready") {
+    const myRoleInfo = roles.find((r) => r.id === myRole);
     return (
       <div className="fixed inset-0 z-[300] bg-black flex flex-col items-center justify-center gap-6">
         <h2 className="text-3xl text-yellow-400">Ваша роль получена</h2>
-        {myRole && (
-          <p className="text-xl text-white">
-            Вы: <span className="text-yellow-500 font-bold">{myRole}</span>
-          </p>
+        {myRoleInfo && (
+          <div className="flex flex-col items-center gap-3">
+            <img
+              src={myRoleInfo.image}
+              alt={myRoleInfo.name}
+              className="w-32 h-32 rounded-2xl object-cover border-2 border-yellow-500 shadow-[0_0_20px_rgba(212,175,55,0.4)]"
+            />
+            <p className="text-xl text-white">
+              Вы: <span className="text-yellow-500 font-bold">{myRoleInfo.name}</span>
+            </p>
+          </div>
         )}
         <button
           type="button"

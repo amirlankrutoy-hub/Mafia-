@@ -10,6 +10,7 @@ const GameManager = require("./managers/GameManager");
 const RoleManager = require("./managers/RoleManager");
 const NightManager = require("./managers/NightManager");
 const GameFlowManager = require("./managers/GameFlowManager");
+const socialStore = require("./socialStore");
 
 const app = express();
 
@@ -81,9 +82,9 @@ function presenceStatus(accountId) {
 
 // ==========================
 // Публичные профили: иконка, любимая роль, победы — видно другим игрокам.
-// Хранится в памяти сервера (сбрасывается при перезапуске — без БД иначе никак).
+// Сохраняются на диск (server/data/social.json), переживают перезапуск.
 // ==========================
-const accountProfiles = {}; // accountId -> { name, icon, favoriteRole, wins }
+const accountProfiles = socialStore.readAll().accountProfiles; // accountId -> { name, icon, favoriteRole, wins }
 
 function publicProfile(accountId) {
     const prof = accountProfiles[accountId] || {};
@@ -98,11 +99,17 @@ function publicProfile(accountId) {
 }
 
 // ==========================
-// Заявки в друзья: хранятся на сервере (в памяти), пока не приняты/отклонены.
+// Заявки в друзья: хранятся на диске (server/data/social.json), пока не
+// приняты/отклонены — переживают перезапуск сервера.
 // Если получатель сейчас онлайн — уведомление придёт мгновенно;
 // в любом случае заявка видна во вкладке "Заявки" при следующем заходе.
 // ==========================
-const friendRequests = {}; // toAccountId -> [{ fromAccountId, fromName, fromIcon, createdAt }]
+const friendRequests = socialStore.readAll().friendRequests; // toAccountId -> [{ fromAccountId, fromName, fromIcon, createdAt }]
+
+// Сохраняет оба хранилища на диск — вызывается после любого изменения
+function saveSocial() {
+    socialStore.writeAll(accountProfiles, friendRequests);
+}
 
 // ==========================
 // Способности (покупаются за тени, используются в игре)
@@ -236,12 +243,43 @@ io.on("connection", (socket) => {
             ...(typeof wins === "number" ? { wins } : {}),
             ...(name ? { name } : {})
         };
+        saveSocial();
         io.emit("profile:changed", publicProfile(accountId));
     });
 
     socket.on("profile:get", (accountId, callback) => {
         if (typeof callback !== "function") return;
         callback(publicProfile(accountId));
+    });
+
+    // Засчитать победу игроку (вызывается клиентом один раз в конце игры,
+    // если он реально играл и оказался на победившей стороне). Инкремент
+    // делается на сервере, а не абсолютным значением с клиента — так надёжнее,
+    // клиенту не нужно знать текущий счёт.
+    socket.on("profile:register-win", (accountId) => {
+        if (!accountId) return;
+        accountProfiles[accountId] = {
+            ...accountProfiles[accountId],
+            wins: (accountProfiles[accountId]?.wins || 0) + 1
+        };
+        saveSocial();
+        io.emit("profile:changed", publicProfile(accountId));
+    });
+
+    // "Мир" — топ-200 игроков по количеству побед
+    socket.on("leaderboard:get", (callback) => {
+        if (typeof callback !== "function") return;
+        const list = Object.entries(accountProfiles)
+            .map(([id, prof]) => ({
+                id,
+                name: prof.name || `Игрок #${id}`,
+                icon: prof.icon || null,
+                wins: typeof prof.wins === "number" ? prof.wins : 0
+            }))
+            .filter((p) => p.wins > 0)
+            .sort((a, b) => b.wins - a.wins)
+            .slice(0, 200);
+        callback(list);
     });
 
     // ==========================
@@ -264,6 +302,7 @@ io.on("connection", (socket) => {
                 fromIcon: fromIcon || null,
                 createdAt: Date.now()
             });
+            saveSocial();
         }
 
         const targetSocketId = presence[toAccountId]?.socketId;
@@ -284,6 +323,7 @@ io.on("connection", (socket) => {
         friendRequests[toAccountId] = friendRequests[toAccountId].filter(
             (r) => r.fromAccountId !== fromAccountId
         );
+        saveSocial();
     });
 
     // Получить свои входящие заявки (вкладка "Заявки")
@@ -300,6 +340,7 @@ io.on("connection", (socket) => {
             friendRequests[toAccountId] = friendRequests[toAccountId].filter(
                 (r) => r.fromAccountId !== fromAccountId
             );
+            saveSocial();
         }
 
         if (accepted) {

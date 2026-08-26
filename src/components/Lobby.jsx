@@ -59,7 +59,7 @@ export default function Lobby({
   const handleGiveMafio = (player) => {
     if (!onAdminGive || !player?.id) return;
     const amount = window.prompt(
-      `Сколько Мафио выдать игроку «${player.name}»?`,
+      `Сколько Токенов выдать игроку «${player.name}»?`,
       "1000"
     );
     const value = Number(amount);
@@ -234,7 +234,7 @@ export default function Lobby({
                       onClick={() => handleGiveMafio(p)}
                       className="w-full bg-yellow-700/80 text-black py-1.5 rounded-lg text-xs font-bold"
                     >
-                      + Мафио
+                      + Токены
                     </button>
                   )}
                 </div>

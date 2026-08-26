@@ -8,11 +8,11 @@ import {
 } from "../../data/shopData";
 import { PAYMENT_CONFIG } from "../../config/payment";
 
-const PACKAGE_IMAGES = {
-  coins_999: "/mafio999.png",
-  coins_3000: "/mafio3000.png",
-  coins_7000: "/mafio7000.png",
-  coins_10000: "/mafio10000.png"
+ const PACKAGE_IMAGES = {
+  coins_999: "/tokens.png",
+  coins_3000: "/tokens 1.avif",
+  coins_7000: "/tokens 2.jpg",
+  coins_10000: "/tokens 3.jpg"
 };
 
 export default function TopUpModal({ onClose, playerName }) {
@@ -25,11 +25,11 @@ export default function TopUpModal({ onClose, playerName }) {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-2xl sm:text-3xl font-black text-[#d4af37] uppercase tracking-wide flex items-center gap-2">
             <img
-              src="/mafio.png"
+              src="/tokens.png"
               alt=""
               className="w-[50px] h-[50px] rounded-full object-cover scale-[1.12]"
             />
-            Пополнение Мафио
+            Пополнение Токенов
           </h2>
           <button
             onClick={onClose}
@@ -50,29 +50,28 @@ export default function TopUpModal({ onClose, playerName }) {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {COIN_PACKAGES.map((pkg) => {
               const price = getPackagePrice(pkg);
-              const img = PACKAGE_IMAGES[pkg.id] || "/mafio.png";
+              const img = PACKAGE_IMAGES[pkg.id] || "/tokens.png";
               return (
                 <button
                   key={pkg.id}
                   onClick={() => setSelected(pkg)}
-                  className="rounded-2xl border border-[#c5a059]/40 bg-[#120a07] p-4 text-center hover:border-[#d4af37] hover:shadow-[0_0_15px_rgba(212,175,55,0.3)] transition flex flex-col items-center gap-2"
+                  className="relative overflow-hidden rounded-2xl border border-[#c5a059]/40 hover:border-[#d4af37] hover:shadow-[0_0_15px_rgba(212,175,55,0.3)] transition flex flex-col items-center justify-end gap-1.5 min-h-[160px] sm:min-h-[180px] p-4 text-center bg-cover bg-center"
+                  style={{ backgroundImage: `url(${img})` }}
                 >
-                  <img
-                    src={img}
-                    alt={`${pkg.amount} Мафио`}
-                    className="h-24 w-24 sm:h-28 sm:w-28 object-contain "
-                  />
-                  <div className="text-xl font-black text-[#f3e5ab] flex items-center gap-1.5">
+                  {/* Затемнение снизу — чтобы текст было видно на любой картинке */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-black/10 pointer-events-none" />
+
+                  <div className="relative text-xl font-black text-[#f3e5ab] flex items-center gap-1.5 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">
                     {pkg.amount.toLocaleString("ru-RU")}
-                    <img src="/mafio.png" alt="M" className="h-5 w-5 rounded-full object-contain" />
+                    <img src="/tokens.png" alt="M" className="h-5 w-5 rounded-full object-contain" />
                   </div>
-                  <div className="mt-1">
+                  <div className="relative mt-1">
                     {discount && (
-                      <span className="text-sm text-[#c5a059] line-through mr-2">
+                      <span className="text-sm text-[#c5a059] line-through mr-2 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">
                         ${pkg.basePrice}
                       </span>
                     )}
-                    <span className="text-lg font-bold text-[#d4af37]">
+                    <span className="text-lg font-bold text-[#d4af37] drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">
                       ${price}
                     </span>
                   </div>
@@ -84,14 +83,14 @@ export default function TopUpModal({ onClose, playerName }) {
           <div className="space-y-4">
             <div className="rounded-xl border border-[#c5a059]/30 bg-[#120a07] p-4 text-center flex flex-col items-center gap-3">
               <img
-                src={PACKAGE_IMAGES[selected.id] || "/mafio.png"}
+                src={PACKAGE_IMAGES[selected.id] || "/tokens.png"}
                 alt=""
                 className="h-28 w-28 object-contain rounded-full"
               />
               <p className="text-[#c5a059] text-sm">Вы выбрали</p>
               <p className="text-2xl font-black text-[#f3e5ab] flex items-center justify-center gap-2">
                 {selected.amount.toLocaleString("ru-RU")}
-                <img src="/mafio.png" alt="M" className="h-7 w-7 object-contain rounded-full" />
+                <img src="/tokens.png" alt="M" className="h-7 w-7 object-contain rounded-full" />
                 <span className="text-[#d4af37]">— ${getPackagePrice(selected)}</span>
               </p>
             </div>
@@ -121,7 +120,7 @@ export default function TopUpModal({ onClose, playerName }) {
                   этот человек свободен в пн,ср,пт, в 18:00 - 19:00
                 </li>
                 <li>
-                  Мафио зачисляются вручную через админ-панель после проверки
+                  Токены зачисляются вручную через админ-панель после проверки
                   перевода — обычно в течение короткого времени.
                 </li>
               </ol>

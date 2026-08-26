@@ -176,7 +176,7 @@ const Navbar = ({ account }) => {
           className="w-full flex items-center justify-between rounded-xl border border-[#d4af37]/30 bg-[#180e0a] px-3 py-2"
         >
           <span className="flex items-center gap-2 text-sm font-bold text-[#f3e5ab]">
-            <img src="/mafio.png" alt="" className="w-6 h-6" />
+            <img src="/tokens.png" alt="" className="w-6 h-6" />
             {mafioBalance.toLocaleString('ru-RU')}
           </span>
           <span className="h-5 w-5 rounded-full bg-[#d4af37] text-black text-xs font-black flex items-center justify-center">
@@ -190,7 +190,7 @@ const Navbar = ({ account }) => {
           className="w-full flex items-center justify-between rounded-xl border border-[#d4af37]/30 bg-[#180e0a] px-3 py-2"
         >
           <span className="flex items-center gap-2 text-sm font-bold text-[#f3e5ab]">
-            <img src="/teni.png" alt="" className="w-7 h-7 rounded-full" />
+            <img src="/krital.svg" alt="" className="w-7 h-7 rounded-full" />
             {teniBalance}
           </span>
           <span className="h-5 w-5 rounded-full bg-[#d4af37] text-black text-xs font-black flex items-center justify-center">
@@ -303,11 +303,11 @@ const Navbar = ({ account }) => {
 
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1 rounded-full border border-[#d4af37]/40 bg-[#140b07] px-2 py-1">
-              <img src="/mafio.png" alt="" className="w-5 h-5" />
+              <img src="/tokens.png" alt="" className="w-5 h-5" />
               <span className="text-xs font-bold text-[#f3e5ab]">{mafioBalance}</span>
             </div>
             <div className="flex items-center gap-1 rounded-full border border-[#d4af37]/40 bg-[#140b07] px-2 py-1">
-              <img src="/teni.png" alt="" className="w-5 h-5 rounded-full" />
+              <img src="/krital.svg" alt="" className="w-5 h-5 rounded-full" />
               <span className="text-xs font-bold text-[#d4af37]">{teniBalance}</span>
             </div>
           </div>

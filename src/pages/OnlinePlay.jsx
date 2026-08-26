@@ -730,6 +730,7 @@ export default function OnlinePlay({ account }) {
                 isMayor={mayor?.id === socket.id}
                 players={players}
                 myRole={myRole}
+                account={account}
                 onLeaveToLobby={() => setInGame(false)}
             />
         );

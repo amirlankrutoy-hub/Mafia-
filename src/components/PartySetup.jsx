@@ -93,7 +93,7 @@ export default function PartySetup({
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/40">
                 <span className="text-6xl drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]">🔒</span>
                 <span className="rounded-md bg-black/70 border border-yellow-500/60 px-3 py-1 text-sm font-bold text-yellow-400">
-                  {ROLE_PRICES[role.id] ?? 0}{" "}<img src="/mafio.png" alt="" className="inline h-4 w-4 object-contain align-[-2px]" /> — купить в магазине
+                  {ROLE_PRICES[role.id] ?? 0}{" "}<img src="/tokens.png" alt="" className="inline h-4 w-4 object-contain align-[-2px]" /> — купить в магазине
                 </span>
               </div>
             )}

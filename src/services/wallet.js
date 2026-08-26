@@ -1,5 +1,5 @@
 // wallet.js
-// Локальный "кошелёк" игрока — валюта Мафио (M) и то, что на неё куплено.
+// Локальный "кошелёк" игрока — валюта Токены (T) и то, что на неё куплено.
 //
 // ВАЖНО: в проекте пока нет системы аккаунтов/базы данных — только
 // комнаты в памяти сервера (RoomManager). Поэтому баланс и покупки
@@ -79,7 +79,7 @@ export function ownsRole(roleId) {
   return readState().ownedRoles.includes(roleId);
 }
 
-// Списание валюты (для обмена Мафио на тени и т.п.). Возвращает { success, balance }.
+// Списание валюты (для обмена Токенов на кристаллы теней и т.п.). Возвращает { success, balance }.
 export function debit(amount) {
   const value = Math.max(0, Math.floor(amount) || 0);
   const state = readState();
@@ -114,7 +114,7 @@ export function purchase({ kind, id, price }) {
     return { success: false, message: "Уже куплено" };
   }
   if (state.balance < price) {
-    return { success: false, message: "Недостаточно Мафио" };
+    return { success: false, message: "Недостаточно Токенов" };
   }
 
   state.balance -= price;
@@ -163,7 +163,7 @@ export function redeemPromoCode(rawCode) {
     success: true,
     message:
       def.type === "coins"
-        ? `Начислено ${def.amount} Мафио`
+        ? `Начислено ${def.amount} Токенов`
         : "Роль открыта бесплатно"
   };
 }
@@ -173,7 +173,7 @@ export function isAdminUnlocked() {
 }
 
 // Разовая выдача администратору: все роли, все эмодзи, все украшения,
-// 100 000 Мафио и эксклюзивные предметы (передаются отдельно, см. admin.js).
+// 100 000 Токенов и эксклюзивные предметы (передаются отдельно, см. admin.js).
 // Срабатывает только один раз — при повторном входе баланс и покупки
 // остаются ровно такими, какими были в прошлый раз, ничего не выдаётся
 // и не сбрасывается заново.

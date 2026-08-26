@@ -13,8 +13,8 @@ export default function CurrencyBar({ onOpenTopUp }) {
   return (
     <div className="flex items-center rounded-full border-2 border-[#d4af37] bg-gradient-to-b from-[#1c130a] to-[#0b0704] px-2 py-1 gap-2 shadow-[0_0_15px_rgba(212,175,55,0.25)]">
       <img
-        src="/mafio.png"
-        alt="Мафио"
+        src="/tokens.png"
+        alt="Токены"
         className="h-8 w-8 rounded-full object-cover border border-[#8b6b12] shadow-inner"
         onError={(e) => {
           e.currentTarget.style.display = "none";
@@ -30,7 +30,7 @@ export default function CurrencyBar({ onOpenTopUp }) {
       <button
         type="button"
         onClick={onOpenTopUp}
-        aria-label="Пополнить Мафио"
+        aria-label="Пополнить Токены"
         className="h-7 w-7 rounded-lg bg-gradient-to-b from-[#3a2c14] to-[#1a1206] border border-[#d4af37]/60 text-[#d4af37] font-black flex items-center justify-center hover:brightness-125 active:scale-95 transition"
       >
         +

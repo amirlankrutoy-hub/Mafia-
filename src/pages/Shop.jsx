@@ -96,7 +96,7 @@ export default function Shop() {
         <p className="text-[#c5a059] mt-2">
           Баланс:{" "}
           <span className="text-[#f3e5ab] font-bold">
-            {wallet.balance.toLocaleString("ru-RU")}{" "}<img src="/mafio.png" alt="" className="inline h-5 w-5 object-contain align-[-2px] ml-0.5" />
+            {wallet.balance.toLocaleString("ru-RU")}{" "}<img src="/tokens.png" alt="" className="inline h-5 w-5 object-contain align-[-2px] ml-0.5" />
           </span>
         </p>
       </div>
@@ -163,7 +163,7 @@ export default function Shop() {
                       onClick={() => buy("role", role.id, price)}
                       className="w-full rounded-lg bg-[#d4af37] text-black font-bold py-1.5 text-sm hover:brightness-110"
                     >
-                      {price}{" "}<img src="/mafio.png" alt="" className="inline h-4 w-4 object-contain align-[-2px]" />
+                      {price}{" "}<img src="/tokens.png" alt="" className="inline h-4 w-4 object-contain align-[-2px]" />
                     </button>
                   )}
                 </div>
@@ -194,7 +194,7 @@ export default function Shop() {
                     onClick={() => buy("emoji", emoji.id, emoji.price)}
                     className="w-full rounded-lg bg-[#d4af37] text-black font-bold py-1 text-xs hover:brightness-110"
                   >
-                    {emoji.price}{" "}<img src="/mafio.png" alt="" className="inline h-4 w-4 object-contain align-[-2px]" />
+                    {emoji.price}{" "}<img src="/tokens.png" alt="" className="inline h-4 w-4 object-contain align-[-2px]" />
                   </button>
                 )}
               </div>
@@ -242,7 +242,7 @@ export default function Shop() {
                     onClick={() => buy("decoration", d.id, d.price)}
                     className="w-full rounded-lg bg-[#d4af37] text-black font-bold py-1 text-xs hover:brightness-110"
                   >
-                    {d.price}{" "}<img src="/mafio.png" alt="" className="inline h-4 w-4 object-contain align-[-2px]" />
+                    {d.price}{" "}<img src="/tokens.png" alt="" className="inline h-4 w-4 object-contain align-[-2px]" />
                   </button>
                 )}
               </div>
@@ -257,7 +257,7 @@ export default function Shop() {
             Баланс:{" "}
             <span className="text-[#f3e5ab] font-bold">
               {teni}{" "}
-              <img src="/teni.png" alt="" className="inline h-5 w-5 object-contain align-[-2px] ml-0.5" />
+              <img src="/krital.svg" alt="" className="inline h-5 w-5 object-contain align-[-2px] ml-0.5" />
             </span>
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
@@ -289,7 +289,7 @@ export default function Shop() {
                     disabled={teni < a.price}
                     className="rounded-lg bg-gradient-to-r from-[#8b0000] to-[#5c0000] px-3 py-1.5 text-xs font-bold text-[#f3e5ab] border border-[#d4af37]/60 disabled:opacity-40"
                   >
-                    {a.price} <img src="/teni.png" alt="" className="inline h-4 w-4 align-[-2px]" />
+                    {a.price} <img src="/krital.svg" alt="" className="inline h-4 w-4 align-[-2px]" />
                   </button>
                 </div>
               </div>

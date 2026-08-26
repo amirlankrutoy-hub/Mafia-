@@ -1452,3 +1452,12 @@ bg-[/nav-photo]center center/cover
 <span className="text-lg sm:text-2xl font-black uppercase tracking-[0.15em] sm:tracking-[0.2em] text-[#d4af37] drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] transition-colors group-hover:text-[#f3e5ab]">
               Mafia Play
             </span>
+
+
+
+            const PACKAGE_IMAGES = {
+  coins_999: "/tokens.png",
+  coins_3000: "/tokens 1.avif",
+  coins_7000: "/tokens 2.jpg",
+  coins_10000: "/tokens 3.jpg"
+};

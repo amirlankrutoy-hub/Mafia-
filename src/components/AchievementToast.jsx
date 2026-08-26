@@ -23,7 +23,7 @@ const AchievementToast = () => {
             : "border-[#d4af37] bg-[#140b07]/95"
         }`}
       >
-        <img src="/teni.png" alt="" className="w-7 h-7 rounded-full" />
+        <img src="/krital.svg" alt="" className="w-7 h-7 rounded-full" />
         <div className="text-left">
           <div
             className={`text-[10px] font-bold uppercase tracking-widest ${

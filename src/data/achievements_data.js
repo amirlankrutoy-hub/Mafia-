@@ -173,7 +173,7 @@ roles.forEach((r) => {
   add({
     id: `mafio_earned_${n}`,
     title: `Капитал (${n})`,
-    description: `Заработайте суммарно ${n.toLocaleString("ru-RU")} Мафио.`,
+    description: `Заработайте суммарно ${n.toLocaleString("ru-RU")} Токенов.`,
     stat: "mafioEarnedTotal",
     threshold: n
   });

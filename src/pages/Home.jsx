@@ -197,17 +197,17 @@ function AdminFooter() {
   }
 
   return (
-    <footer className="mt-16 border-t border-[#c5a059]/10 pt-6 pb-10 text-center flex gap-[20px]">
+    <footer className="mt-16 border-t border-[#c5a059]/10 pt-6 pb-10 text-center flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-5">
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="text-[10px] uppercase tracking-[0.3em] text-[#c5a059]/30 hover:text-[#c5a059]/60"
+        className="text-[11px] sm:text-[10px] uppercase tracking-[0.15em] sm:tracking-[0.3em] text-[#c5a059]/50 hover:text-[#c5a059]/80"
       >
         Mafia Play · панель администратора
       </button>
-      <Link to="/privacy" className='text-[10px] uppercase tracking-[0.3em] text-[#c5a059]/30 hover:text-[#c5a059]/60'>Политика конфиденциальности</Link>
+      <Link to="/privacy" className='text-[11px] sm:text-[10px] uppercase tracking-[0.15em] sm:tracking-[0.3em] text-[#c5a059]/50 hover:text-[#c5a059]/80'>Политика конфиденциальности</Link>
       
-      <Link to="/terms" className='text-[10px] uppercase tracking-[0.3em] text-[#c5a059]/30 hover:text-[#c5a059]/60'>Пользовательское соглашение</Link>
+      <Link to="/terms" className='text-[11px] sm:text-[10px] uppercase tracking-[0.15em] sm:tracking-[0.3em] text-[#c5a059]/50 hover:text-[#c5a059]/80'>Пользовательское соглашение</Link>
 
       {open && (
         <div className="fixed inset-0 z-[500] bg-black/85 flex items-center justify-center p-4">
@@ -227,14 +227,14 @@ function AdminFooter() {
                 </p>
                 {roleInfo.id === "admin_support" && (
                   <p className="text-green-300 text-sm">
-                    +3000 Мафио · Telegram:{" "}
+                    +3000 Токенов · Telegram:{" "}
                     <a href="https://t.me/Amir4k_Nurmatov" target="_blank" rel="noreferrer" className="underline">
                       @Amir4k_Nurmatov
                     </a>
                   </p>
                 )}
                 <p className="text-[#c5a059] text-xs">
-                  Бан игроков — только в лобби комнаты. Выдача Мафио — там же.
+                  Бан игроков — только в лобби комнаты. Выдача Токенов — там же.
                 </p>
                 <Link
                   to="/admin"
