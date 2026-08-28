@@ -1,11 +1,40 @@
 // teniWallet.js — валюта "Кристаллы теней", выдаётся за достижения.
-// Хранится локально (привязана к устройству/аккаунту так же, как Мафио).
+// Хранится локально, привязана к конкретному ID аккаунта (см. комментарий
+// в wallet.js — раньше был общий ключ на весь браузер, что путало балансы
+// разных аккаунтов на одном устройстве).
 
 const TENI_KEY = "mafia_teni_v1";
+const ACCOUNT_KEY = "mafia_account_v1";
+
+function getCurrentAccountId() {
+  try {
+    const raw = localStorage.getItem(ACCOUNT_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw)?.id || null;
+  } catch {
+    return null;
+  }
+}
+
+function teniKey() {
+  const id = getCurrentAccountId();
+  if (!id) return TENI_KEY;
+
+  const perAccountKey = `${TENI_KEY}_${id}`;
+  try {
+    if (!localStorage.getItem(perAccountKey)) {
+      const legacy = localStorage.getItem(TENI_KEY);
+      if (legacy) localStorage.setItem(perAccountKey, legacy);
+    }
+  } catch {
+    // ignore
+  }
+  return perAccountKey;
+}
 
 function readBalance() {
   try {
-    const raw = localStorage.getItem(TENI_KEY);
+    const raw = localStorage.getItem(teniKey());
     return raw ? Math.max(0, Number(JSON.parse(raw).balance) || 0) : 0;
   } catch {
     return 0;
@@ -13,7 +42,7 @@ function readBalance() {
 }
 
 function writeBalance(balance) {
-  localStorage.setItem(TENI_KEY, JSON.stringify({ balance }));
+  localStorage.setItem(teniKey(), JSON.stringify({ balance }));
   window.dispatchEvent(new CustomEvent("mafia-teni-changed"));
 }
 

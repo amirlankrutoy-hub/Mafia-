@@ -1,0 +1,11 @@
+{
+  "accountProfiles": {
+    "777777": {
+      "name": "admin",
+      "icon": "/avatars/avatar17.svg",
+      "favoriteRole": "vor",
+      "wins": 0
+    }
+  },
+  "friendRequests": {}
+}

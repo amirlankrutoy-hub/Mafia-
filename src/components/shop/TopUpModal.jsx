@@ -6,18 +6,33 @@ import {
   DISCOUNT_PERCENT,
   DISCOUNT_UNTIL
 } from "../../data/shopData";
-import { PAYMENT_CONFIG } from "../../config/payment";
 
- const PACKAGE_IMAGES = {
+const BOT_USERNAME = "mafia_users_bot";
+
+const PACKAGE_IMAGES = {
   coins_999: "/tokens.png",
-  coins_3000: "/tokens 1.avif",
-  coins_7000: "/tokens 2.jpg",
-  coins_10000: "/tokens 3.jpg"
+  coins_3000: "/tokens-3000.avif",
+  coins_7000: "/tokens-7000.jpg",
+  coins_10000: "/tokens-10000.jpg"
 };
 
-export default function TopUpModal({ onClose, playerName }) {
+// Ссылка на бота с deep-link payload "пакет-ID_аккаунта" — так бот сразу
+// знает, какой пакет купить и на какой аккаунт зачислить, не переспрашивая.
+function botLink(pkgId, accountId) {
+  const payload = accountId ? `${pkgId}-${accountId}` : pkgId;
+  return `https://t.me/${BOT_USERNAME}?start=${payload}`;
+}
+
+export default function TopUpModal({ onClose, accountId }) {
   const [selected, setSelected] = useState(null);
   const discount = isDiscountActive();
+
+  const handleSelect = (pkg) => {
+    setSelected(pkg);
+    // Открываем бота сразу — это происходит по клику пользователя, поэтому
+    // блокировщики всплывающих окон это пропускают.
+    window.open(botLink(pkg.id, accountId), "_blank", "noopener,noreferrer");
+  };
 
   return (
     <div className="fixed inset-0 z-[400] bg-black/85 flex items-center justify-center p-4">
@@ -54,7 +69,7 @@ export default function TopUpModal({ onClose, playerName }) {
               return (
                 <button
                   key={pkg.id}
-                  onClick={() => setSelected(pkg)}
+                  onClick={() => handleSelect(pkg)}
                   className="relative overflow-hidden rounded-2xl border border-[#c5a059]/40 hover:border-[#d4af37] hover:shadow-[0_0_15px_rgba(212,175,55,0.3)] transition flex flex-col items-center justify-end gap-1.5 min-h-[160px] sm:min-h-[180px] p-4 text-center bg-cover bg-center"
                   style={{ backgroundImage: `url(${img})` }}
                 >
@@ -95,35 +110,26 @@ export default function TopUpModal({ onClose, playerName }) {
               </p>
             </div>
 
-            <div className="rounded-xl border border-[#d4af37]/50 bg-[#1c100b] p-4 space-y-3">
+            <div className="rounded-xl border border-[#d4af37]/50 bg-[#1c100b] p-4 space-y-3 text-center">
               <p className="text-[#d4af37] font-bold uppercase text-sm tracking-wide">
-                Как оплатить
+                Мы открыли Telegram-бота в новой вкладке
               </p>
-              <div className="flex items-center justify-between gap-3 rounded-lg bg-black/40 px-3 py-2">
-                <span className="font-mono text-[#f3e5ab] tracking-wider text-sm sm:text-base">
-                  @Amir4k_Nurmatov
-                </span>
-              </div>
-              <p className="text-xs text-[#c5a059]">
-                Получатель: {PAYMENT_CONFIG.cardHolder}
+              <p className="text-sm text-[#e6d5bc]">
+                Там нужно перевести деньги на карту и прислать скриншот
+                оплаты — Токены зачислятся вам на этот же аккаунт
+                автоматически после проверки.
               </p>
-
-              <ol className="text-sm text-[#e6d5bc] list-decimal list-inside space-y-1.5">
-                <li>
-                  Поговорите с этим человеком чтобы получить мафио
-                </li>
-                <li>
-                  В комментарии к переводу (или отдельным сообщением) укажите
-                  ваш ник в игре{playerName ? `: «${playerName}»` : ""}.
-                </li>
-                <li>
-                  этот человек свободен в пн,ср,пт, в 18:00 - 19:00
-                </li>
-                <li>
-                  Токены зачисляются вручную через админ-панель после проверки
-                  перевода — обычно в течение короткого времени.
-                </li>
-              </ol>
+              <a
+                href={botLink(selected.id, accountId)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block w-full rounded-xl bg-gradient-to-r from-[#8b0000] to-[#5c0000] py-3 text-[#f3e5ab] font-bold border border-[#d4af37]/60"
+              >
+                Открыть @{BOT_USERNAME}
+              </a>
+              <p className="text-[10px] text-[#8b6b12]">
+                Не открылось само? Нажмите кнопку выше ещё раз.
+              </p>
             </div>
 
             <button

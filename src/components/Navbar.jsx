@@ -337,7 +337,7 @@ const Navbar = ({ account }) => {
       )}
 
       {showTopUp && (
-        <TopUpModal onClose={() => setShowTopUp(false)} playerName={account?.name} />
+        <TopUpModal onClose={() => setShowTopUp(false)} playerName={account?.name} accountId={account?.id} />
       )}
 
       {showTeniExchange && (

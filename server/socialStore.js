@@ -17,19 +17,20 @@ function readAll() {
     const data = JSON.parse(raw);
     return {
       accountProfiles: data.accountProfiles || {},
-      friendRequests: data.friendRequests || {}
+      friendRequests: data.friendRequests || {}, // оставлено для обратной совместимости старых файлов, больше не используется
+      friends: data.friends || {}
     };
   } catch {
-    return { accountProfiles: {}, friendRequests: {} };
+    return { accountProfiles: {}, friendRequests: {}, friends: {} };
   }
 }
 
-function writeAll(accountProfiles, friendRequests) {
+function writeAll(accountProfiles, friendRequests, friends) {
   try {
     fs.mkdirSync(path.dirname(FILE), { recursive: true });
     fs.writeFileSync(
       FILE,
-      JSON.stringify({ accountProfiles, friendRequests }, null, 2),
+      JSON.stringify({ accountProfiles, friendRequests, friends }, null, 2),
       "utf8"
     );
   } catch (err) {

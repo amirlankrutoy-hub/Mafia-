@@ -5,6 +5,25 @@ import { grantAdminEverything, credit, isAdminUnlocked } from "./wallet";
 import { ADMIN_DECORATION, ADMIN_EMOJI } from "../data/shopData";
 
 const ROLE_KEY = "mafia_admin_role_v1";
+const ACCOUNT_KEY = "mafia_account_v1"; // тот же ключ, что и в accounts.js/wallet.js
+
+function getCurrentAccountId() {
+  try {
+    const raw = localStorage.getItem(ACCOUNT_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw)?.id || null;
+  } catch {
+    return null;
+  }
+}
+
+// Роль админа привязана к конкретному ID аккаунта — раньше был общий ключ
+// на весь браузер, из-за чего вход под паролем на ОДНОМ аккаунте делал
+// админом сразу ВСЕ аккаунты, когда-либо созданные на этом устройстве.
+function roleKey() {
+  const id = getCurrentAccountId();
+  return id ? `${ROLE_KEY}_${id}` : ROLE_KEY;
+}
 const BANS_KEY = "mafia_bans_v1";
 const STATS_KEY = "mafia_site_stats_v1";
 const ROLE_DISABLE_KEY = "mafia_role_disabled_v1";
@@ -57,7 +76,7 @@ export const ADMIN_ROLES = {
 
 export function getAdminRole() {
   try {
-    return localStorage.getItem(ROLE_KEY) || null;
+    return localStorage.getItem(roleKey()) || null;
   } catch {
     return null;
   }
@@ -89,8 +108,8 @@ export function isProtectedAdminName(name) {
 }
 
 export function setAdminRole(roleId) {
-  if (!roleId) localStorage.removeItem(ROLE_KEY);
-  else localStorage.setItem(ROLE_KEY, roleId);
+  if (!roleId) localStorage.removeItem(roleKey());
+  else localStorage.setItem(roleKey(), roleId);
   window.dispatchEvent(new CustomEvent("mafia-admin-changed"));
 }
 

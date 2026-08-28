@@ -13,9 +13,46 @@ import { PROMO_CODES, ROLE_PRICES, EMOJIS, DECORATIONS } from "../data/shopData"
 const STORAGE_KEY = "mafia_wallet_v1";
 const FREE_ROLES = ["obivatel"]; // Обыватель — базовая роль, всегда доступна
 
+// Ключ аккаунта хранится в accounts.js под этим же именем — берём его
+// напрямую по ключу (а не через import), чтобы не создавать циклическую
+// зависимость между accounts.js и wallet.js (accounts.js уже импортирует
+// функции из wallet.js).
+const ACCOUNT_KEY = "mafia_account_v1";
+
+function getCurrentAccountId() {
+  try {
+    const raw = localStorage.getItem(ACCOUNT_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw)?.id || null;
+  } catch {
+    return null;
+  }
+}
+
+// Кошелёк привязан к конкретному ID аккаунта — раньше был один общий ключ
+// на весь браузер, из-за чего все аккаунты на одном устройстве делили один
+// баланс и один admin-флаг. Если для этого аккаунта своих данных ещё нет,
+// но есть старые общие данные (до этого исправления) — переносим их один
+// раз как стартовое состояние, чтобы никто не потерял прогресс.
+function walletKey() {
+  const id = getCurrentAccountId();
+  if (!id) return STORAGE_KEY; // на экране выбора имени аккаунта ещё нет
+
+  const perAccountKey = `${STORAGE_KEY}_${id}`;
+  try {
+    if (!localStorage.getItem(perAccountKey)) {
+      const legacy = localStorage.getItem(STORAGE_KEY);
+      if (legacy) localStorage.setItem(perAccountKey, legacy);
+    }
+  } catch {
+    // ignore
+  }
+  return perAccountKey;
+}
+
 function readRaw() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(walletKey());
     if (!raw) return null;
     return JSON.parse(raw);
   } catch (e) {
@@ -48,7 +85,7 @@ function readState() {
 }
 
 function writeState(state) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  localStorage.setItem(walletKey(), JSON.stringify(state));
   window.dispatchEvent(new CustomEvent("mafia-wallet-changed"));
   return state;
 }

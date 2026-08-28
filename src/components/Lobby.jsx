@@ -13,7 +13,8 @@ import { EMOJIS, DECORATIONS, ADMIN_DECORATION } from "../data/shopData";
 import { ownsEmoji } from "../services/wallet";
 import { useMusic } from "../context/MusicContext";
 import DecorationSVG from "./shop/DecorationSVG";
-import { addFriend, isFriend } from "../services/friends";
+import { addFriendMutual, getFriendsList } from "../services/presence";
+import { getSelectedAvatar } from "../services/profile";
 
 const ALL_DECORATIONS = [...DECORATIONS, ADMIN_DECORATION];
 
@@ -40,8 +41,38 @@ export default function Lobby({
   const ownedEmojis = EMOJIS.filter((e) => ownsEmoji(e.id));
 
   const [emojiOpen, setEmojiOpen] = useState(false);
-  const [friendVersion, setFriendVersion] = useState(0);
+  const [myFriendIds, setMyFriendIds] = useState([]);
+  const [addingFriendId, setAddingFriendId] = useState(null);
   const { lobbyMuted, toggleLobbyMute, playLobby, stopLobby } = useMusic();
+
+  // Список друзей — с сервера (не локальный кэш), чтобы кнопка "Добавить
+  // в друзья" сразу показывала актуальное состояние.
+  useEffect(() => {
+    if (!myAccountId) return;
+    let cancelled = false;
+    getFriendsList(myAccountId).then((list) => {
+      if (!cancelled) setMyFriendIds((list || []).map((f) => f.id));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [myAccountId]);
+
+  const handleAddFriendInLobby = async (targetAccountId, targetName) => {
+    if (!myAccountId || addingFriendId) return;
+    const me = players.find((p) => p.accountId === myAccountId);
+    setAddingFriendId(targetAccountId);
+    const res = await addFriendMutual({
+      toAccountId: targetAccountId,
+      fromAccountId: myAccountId,
+      fromName: me?.name,
+      fromIcon: getSelectedAvatar()
+    });
+    setAddingFriendId(null);
+    if (res?.success) {
+      setMyFriendIds((prev) => (prev.includes(targetAccountId) ? prev : [...prev, targetAccountId]));
+    }
+  };
 
   // Cowboy-тема в лобби
   useEffect(() => {
@@ -202,20 +233,19 @@ export default function Lobby({
                     </div>
                   </div>
                   {p.accountId && p.accountId !== myAccountId && (
-                    isFriend(p.accountId) ? (
+                    myFriendIds.includes(p.accountId) ? (
                       <span className="mt-1 w-full flex items-center justify-center gap-1.5 text-emerald-400 text-[11px] font-bold py-1">
                         <FontAwesomeIcon icon={faCheck} /> В друзьях
                       </span>
                     ) : (
                       <button
                         type="button"
-                        onClick={() => {
-                          addFriend({ id: p.accountId, name: p.name });
-                          setFriendVersion((v) => v + 1);
-                        }}
-                        className="mt-1 w-full flex items-center justify-center gap-1.5 bg-[#180e0a] border border-[#d4af37]/50 text-[#d4af37] py-1.5 rounded-lg text-xs font-bold"
+                        disabled={addingFriendId === p.accountId}
+                        onClick={() => handleAddFriendInLobby(p.accountId, p.name)}
+                        className="mt-1 w-full flex items-center justify-center gap-1.5 bg-[#180e0a] border border-[#d4af37]/50 text-[#d4af37] py-1.5 rounded-lg text-xs font-bold disabled:opacity-50"
                       >
-                        <FontAwesomeIcon icon={faUserPlus} /> Добавить в друзья
+                        <FontAwesomeIcon icon={faUserPlus} />
+                        {addingFriendId === p.accountId ? "Добавляем..." : "Добавить в друзья"}
                       </button>
                     )
                   )}

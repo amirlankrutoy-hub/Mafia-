@@ -12,7 +12,7 @@ const REGISTRY_KEY = "mafia_names_registry_v1"; // все занятые име�
 // Специальные имена и их фиксированные ID
 const SPECIAL_ACCOUNTS = {
   admin: { id: "777777", adminRole: "Admin" },
-  admin2: { id: "1111111", adminRole: "admin-setting" }
+  admin2: { id: "111111", adminRole: "admin-setting" }
 };
 
 function readRegistry() {

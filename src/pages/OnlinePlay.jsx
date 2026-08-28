@@ -188,15 +188,15 @@ export default function OnlinePlay({ account }) {
         return () => socket.off("connect", resync);
     }, []);
 
-    // If page opened with ?autojoin=CODE, prefill join flow
+    // Если страница открыта с ?autojoin=CODE (пришли по ссылке "постучаться" —
+    // мэр принял заявку) — сразу входим в комнату по этому коду, без
+    // промежуточных экранов.
     useEffect(() => {
         try {
             const params = new URLSearchParams(window.location.search);
             const auto = params.get('autojoin');
             if (auto) {
-                setJoinCode(auto.toUpperCase());
-                setAction('join');
-                setView('name');
+                handleSaveCode(auto);
             }
         } catch (e) {
             console.warn('autojoin parse error', e);

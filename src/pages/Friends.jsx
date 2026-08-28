@@ -6,34 +6,22 @@ import {
   faUserPlus,
   faDoorOpen,
   faCircle,
-  faCheck,
-  faXmark,
-  faBell,
   faEarthAmericas,
   faTrophy
 } from '@fortawesome/free-solid-svg-icons';
 import { socket } from '../socket';
-import {
-  getFriends,
-  removeFriend,
-  addFriend,
-  getRecentPlayers,
-  isSentRequest,
-  markRequestSent,
-  unmarkRequestSent
-} from '../services/friends';
+import { getRecentPlayers } from '../services/friends';
 import {
   announcePresence,
   fetchBulkStatus,
   searchByAccountId,
   knockOnRoom,
   onFriendJoinDecision,
-  sendFriendRequest,
-  cancelFriendRequest,
-  getFriendRequests,
-  respondFriendRequest,
-  onFriendRequestReceived,
-  onFriendRequestAccepted,
+  addFriendMutual,
+  removeFriendMutual,
+  getFriendsList,
+  onFriendAdded,
+  onFriendRemoved,
   onProfileChanged,
   getLeaderboard
 } from '../services/presence';
@@ -41,12 +29,12 @@ import { getSelectedAvatar } from '../services/profile';
 import PlayerProfileModal from '../components/PlayerProfileModal';
 
 const DEFAULT_ICON = '/avatars/avatar1.svg';
+const LEADERBOARD_TIMEOUT_MS = 8000;
 
 const TABS = [
   { id: 'friends', label: 'Друзья' },
   { id: 'recent', label: 'Недавние' },
   { id: 'search', label: 'Поиск по ID' },
-  { id: 'requests', label: 'Заявки' },
   { id: 'world', label: 'Мир' }
 ];
 
@@ -72,14 +60,14 @@ const Friends = ({ account }) => {
   const [searchResult, setSearchResult] = useState(null);
   const [searchError, setSearchError] = useState('');
   const [knocking, setKnocking] = useState(null); // { id, roomCode }
-  const [friendsVersion, setFriendsVersion] = useState(0);
-  const [requests, setRequests] = useState([]);
+  const [friends, setFriends] = useState([]);
+  const [friendsLoading, setFriendsLoading] = useState(false);
   const [openProfileId, setOpenProfileId] = useState(null);
-  const [sentVersion, setSentVersion] = useState(0);
   const [leaderboard, setLeaderboard] = useState([]);
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+  const [leaderboardError, setLeaderboardError] = useState(false);
+  const [pendingAddId, setPendingAddId] = useState(null);
 
-  const friends = getFriends();
   const recent = getRecentPlayers();
 
   useEffect(() => {
@@ -87,11 +75,19 @@ const Friends = ({ account }) => {
     if (account) announcePresence(account.id, account.name);
   }, [account]);
 
+  // Список друзей — всегда с сервера, поэтому виден сразу с любого
+  // устройства, без заявок и подтверждений.
+  const loadFriends = useCallback(async () => {
+    if (!account?.id) return;
+    setFriendsLoading(true);
+    const list = await getFriendsList(account.id);
+    setFriends(list || []);
+    setFriendsLoading(false);
+  }, [account?.id]);
+
   useEffect(() => {
-    const refresh = () => setFriendsVersion((v) => v + 1);
-    window.addEventListener('mafia-friends-changed', refresh);
-    return () => window.removeEventListener('mafia-friends-changed', refresh);
-  }, []);
+    loadFriends();
+  }, [loadFriends]);
 
   const refreshStatuses = useCallback(async () => {
     const ids = [...friends.map((f) => f.id), ...recent.map((r) => r.id)];
@@ -103,7 +99,7 @@ const Friends = ({ account }) => {
     });
     setStatuses((prev) => ({ ...prev, ...map }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [friendsVersion]);
+  }, [friends]);
 
   useEffect(() => {
     refreshStatuses();
@@ -111,50 +107,48 @@ const Friends = ({ account }) => {
     return () => clearInterval(interval);
   }, [refreshStatuses]);
 
-  const loadRequests = useCallback(async () => {
-    if (!account) return;
-    const list = await getFriendRequests(account.id);
-    setRequests(list || []);
-  }, [account]);
-
-  useEffect(() => {
-    loadRequests();
-  }, [loadRequests]);
-
-  // Топ-200 по победам — загружаем при открытии вкладки "Мир"
+  // Топ-200 по победам — загружаем при открытии вкладки "Мир". С таймаутом:
+  // если сервер не отвечает (например, ещё не задеплоена свежая версия),
+  // не висим в "Загрузка рейтинга..." вечно, а показываем понятную ошибку.
   useEffect(() => {
     if (tab !== 'world') return;
     let cancelled = false;
     setLeaderboardLoading(true);
+    setLeaderboardError(false);
+
+    const timeout = setTimeout(() => {
+      if (!cancelled) {
+        setLeaderboardLoading(false);
+        setLeaderboardError(true);
+      }
+    }, LEADERBOARD_TIMEOUT_MS);
+
     getLeaderboard().then((list) => {
+      clearTimeout(timeout);
       if (!cancelled) {
         setLeaderboard(list);
         setLeaderboardLoading(false);
       }
     });
+
     return () => {
       cancelled = true;
+      clearTimeout(timeout);
     };
   }, [tab]);
 
-  // Живые уведомления о новых заявках
+  // Кто-то добавил меня в друзья прямо сейчас — сразу появляется в списке,
+  // без перезагрузки страницы.
   useEffect(() => {
-    const off = onFriendRequestReceived((req) => {
-      setRequests((prev) => {
-        if (prev.some((r) => r.fromAccountId === req.fromAccountId)) return prev;
-        return [...prev, { ...req, createdAt: Date.now() }];
-      });
+    const off = onFriendAdded((friend) => {
+      setFriends((prev) => (prev.some((f) => f.id === friend.id) ? prev : [...prev, friend]));
     });
     return off;
   }, []);
 
-  // Кто-то принял мою заявку — добавляем его себе в друзья
   useEffect(() => {
-    const off = onFriendRequestAccepted(({ byAccountId, byName }) => {
-      addFriend({ id: byAccountId, name: byName });
-      unmarkRequestSent(byAccountId);
-      setSentVersion((v) => v + 1);
-      alert(`${byName} принял(а) вашу заявку в друзья!`);
+    const off = onFriendRemoved(({ byAccountId }) => {
+      setFriends((prev) => prev.filter((f) => f.id !== byAccountId));
     });
     return off;
   }, []);
@@ -200,9 +194,7 @@ const Friends = ({ account }) => {
     // ID — это просто 6 случайных цифр без общего реестра аккаунтов на сервере,
     // поэтому "не найден" мы никогда не показываем: сервер физически не может
     // подтвердить, существует ли аккаунт с таким ID, если человек ни разу не
-    // заходил на сайт с момента последнего перезапуска сервера (или ещё не
-    // заходил вовсе). Раньше это приводило к тому, что заявку невозможно было
-    // отправить офлайн-игроку — поиск просто отказывал.
+    // заходил на сайт с момента последнего перезапуска сервера.
     setSearchResult({ ...result, name: result?.name || `Игрок #${id}` });
     setStatuses((prev) => ({ ...prev, [id]: result }));
   };
@@ -222,50 +214,43 @@ const Friends = ({ account }) => {
     }
   };
 
-  const handleToggleFriendRequest = async (person) => {
-    if (!account) return;
-    const alreadySent = isSentRequest(person.id);
-
-    if (alreadySent) {
-      cancelFriendRequest({ toAccountId: person.id, fromAccountId: account.id });
-      unmarkRequestSent(person.id);
-      setSentVersion((v) => v + 1);
-      return;
-    }
-
-    markRequestSent(person.id);
-    setSentVersion((v) => v + 1);
-    const res = await sendFriendRequest({
+  // Добавление в друзья — сразу и взаимно, без подтверждения второй
+  // стороны: как только жмёшь "Дружить", вы оба сразу видите друг друга
+  // во вкладке "Друзья".
+  const handleAddFriend = async (person) => {
+    if (!account || isFriend(person.id)) return;
+    setPendingAddId(person.id);
+    const res = await addFriendMutual({
       toAccountId: person.id,
       fromAccountId: account.id,
       fromName: account.name,
       fromIcon: getSelectedAvatar()
     });
-    if (!res?.success) {
-      unmarkRequestSent(person.id);
-      setSentVersion((v) => v + 1);
-      alert(res?.message || 'Не удалось отправить заявку');
+    setPendingAddId(null);
+    if (res?.success) {
+      setFriends((prev) =>
+        prev.some((f) => f.id === person.id)
+          ? prev
+          : [...prev, res.friend || { id: person.id, name: person.name }]
+      );
+    } else {
+      alert(res?.message || 'Не удалось добавить в друзья');
     }
   };
 
-  const handleRespond = async (req, accepted) => {
+  const handleRemoveFriend = async (friendId) => {
     if (!account) return;
-    await respondFriendRequest({
-      myAccountId: account.id,
-      fromAccountId: req.fromAccountId,
-      accepted
-    });
-    setRequests((prev) => prev.filter((r) => r.fromAccountId !== req.fromAccountId));
-    if (accepted) {
-      addFriend({ id: req.fromAccountId, name: req.fromName });
+    const res = await removeFriendMutual({ myAccountId: account.id, friendId });
+    if (res?.success) {
+      setFriends((prev) => prev.filter((f) => f.id !== friendId));
     }
   };
+
+  const isFriend = (id) => friends.some((f) => f.id === id);
 
   const renderRow = (person) => {
     const status = statuses[person.id];
-    const sent = isSentRequest(person.id);
-    // eslint-disable-next-line no-unused-expressions
-    sentVersion; // подписка на перерисовку при смене состояния заявки
+    const alreadyFriend = isFriend(person.id);
 
     return (
       <div
@@ -278,7 +263,7 @@ const Friends = ({ account }) => {
           className="min-w-0 flex items-center gap-2.5 text-left"
         >
           <img
-            src={status?.icon || DEFAULT_ICON}
+            src={status?.icon || person.icon || DEFAULT_ICON}
             alt=""
             className="h-9 w-9 shrink-0 rounded-full border border-[#d4af37]/50 object-cover"
           />
@@ -305,25 +290,26 @@ const Friends = ({ account }) => {
               {knocking?.id === person.id ? 'Ждём мэра...' : 'Постучаться'}
             </button>
           )}
-          {tab !== 'friends' && (
-            <button
-              type="button"
-              onClick={() => handleToggleFriendRequest(person)}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[10px] font-bold uppercase border transition ${
-                sent
-                  ? 'bg-zinc-700/60 text-zinc-300 border-zinc-600'
-                  : 'border-[#d4af37]/50 text-[#d4af37] hover:bg-[#d4af37]/10'
-              }`}
-              title={sent ? 'Отменить заявку' : 'Отправить заявку в друзья'}
-            >
-              <FontAwesomeIcon icon={faUserPlus} />
-              {sent ? 'Заявка отправлена' : 'Дружить'}
-            </button>
-          )}
+          {tab !== 'friends' &&
+            (alreadyFriend ? (
+              <span className="flex items-center gap-1.5 rounded-lg bg-zinc-700/60 px-3 py-1.5 text-[10px] font-bold uppercase text-zinc-300 border border-zinc-600">
+                ✓ В друзьях
+              </span>
+            ) : (
+              <button
+                type="button"
+                disabled={pendingAddId === person.id}
+                onClick={() => handleAddFriend(person)}
+                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[10px] font-bold uppercase border border-[#d4af37]/50 text-[#d4af37] hover:bg-[#d4af37]/10 disabled:opacity-50"
+              >
+                <FontAwesomeIcon icon={faUserPlus} />
+                {pendingAddId === person.id ? 'Добавляем...' : 'Дружить'}
+              </button>
+            ))}
           {tab === 'friends' && (
             <button
               type="button"
-              onClick={() => removeFriend(person.id)}
+              onClick={() => handleRemoveFriend(person.id)}
               className="rounded-lg border border-red-500/40 px-2.5 py-1.5 text-[10px] uppercase text-red-400"
             >
               Удалить
@@ -358,21 +344,17 @@ const Friends = ({ account }) => {
                 : 'text-[#c5a059] border-transparent hover:bg-[#d4af37]/5'
             }`}
           >
-            {t.id === 'requests' && <FontAwesomeIcon icon={faBell} className="mr-1.5" />}
             {t.id === 'world' && <FontAwesomeIcon icon={faEarthAmericas} className="mr-1.5" />}
             {t.label}
-            {t.id === 'requests' && requests.length > 0 && (
-              <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[9px] font-black text-white">
-                {requests.length}
-              </span>
-            )}
           </button>
         ))}
       </div>
 
       <div className="mt-6 space-y-2.5">
         {tab === 'friends' &&
-          (friends.length ? (
+          (friendsLoading ? (
+            <p className="text-center text-sm text-[#8b6b12] italic mt-8">Загрузка...</p>
+          ) : friends.length ? (
             friends.map(renderRow)
           ) : (
             <p className="text-center text-sm text-[#8b6b12] italic mt-8">
@@ -417,63 +399,14 @@ const Friends = ({ account }) => {
           </div>
         )}
 
-        {tab === 'requests' &&
-          (requests.length ? (
-            requests.map((req) => (
-              <div
-                key={req.fromAccountId}
-                className="flex items-center justify-between gap-3 rounded-xl border border-[#d4af37]/25 bg-[#140b07]/70 px-4 py-3"
-              >
-                <button
-                  type="button"
-                  onClick={() => setOpenProfileId(req.fromAccountId)}
-                  className="min-w-0 flex items-center gap-2.5 text-left"
-                >
-                  <img
-                    src={req.fromIcon || DEFAULT_ICON}
-                    alt=""
-                    className="h-9 w-9 shrink-0 rounded-full border border-[#d4af37]/50 object-cover"
-                  />
-                  <div className="min-w-0">
-                    <div className="text-sm font-bold text-[#f3e5ab]">
-                      Игрок {req.fromName} хочет стать вашим другом!
-                    </div>
-                    <div className="text-[10px] text-[#8b6b12] font-mono">
-                      ID: {req.fromAccountId}
-                    </div>
-                  </div>
-                </button>
-
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => handleRespond(req, true)}
-                    className="flex items-center gap-1.5 rounded-lg bg-emerald-700/80 px-3 py-1.5 text-[10px] font-bold uppercase text-white border border-emerald-400/40"
-                  >
-                    <FontAwesomeIcon icon={faCheck} />
-                    Принять
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleRespond(req, false)}
-                    className="flex items-center gap-1.5 rounded-lg border border-red-500/40 px-3 py-1.5 text-[10px] font-bold uppercase text-red-400"
-                  >
-                    <FontAwesomeIcon icon={faXmark} />
-                    Отклонить
-                  </button>
-                </div>
-              </div>
-            ))
-          ) : (
-            <p className="text-center text-sm text-[#8b6b12] italic mt-8">
-              Пока нет входящих заявок в друзья.
-            </p>
-          ))}
-
         {tab === 'world' && (
           <div>
             {leaderboardLoading ? (
               <p className="text-center text-sm text-[#8b6b12] italic mt-8">Загрузка рейтинга...</p>
+            ) : leaderboardError ? (
+              <p className="text-center text-sm text-red-400 italic mt-8">
+                Не удалось загрузить рейтинг. Попробуйте позже.
+              </p>
             ) : leaderboard.length ? (
               <div className="space-y-2">
                 {leaderboard.map((p, i) => (

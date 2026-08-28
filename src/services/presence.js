@@ -100,54 +100,47 @@ export function onProfileChanged(callback) {
 }
 
 // ==========================
-// Заявки в друзья
+// Друзья — без заявок и подтверждений: добавление сразу мгновенное и
+// взаимное. Список хранится на сервере (переживает смену устройства и
+// перезапуск сервера), поэтому у обоих игроков он появляется сразу.
 // ==========================
 
-/** Отправить заявку в друзья */
-export function sendFriendRequest({ toAccountId, fromAccountId, fromName, fromIcon }) {
+/** Добавить в друзья — сразу и взаимно, без подтверждения второй стороны */
+export function addFriendMutual({ toAccountId, fromAccountId, fromName, fromIcon }) {
   return new Promise((resolve) => {
     if (!socket.connected) socket.connect();
     socket.emit(
-      "friend:request-send",
+      "friend:add",
       { toAccountId, fromAccountId, fromName, fromIcon },
       (res) => resolve(res)
     );
   });
 }
 
-/** Отменить свою уже отправленную заявку (повторное нажатие "Дружить") */
-export function cancelFriendRequest({ toAccountId, fromAccountId }) {
-  socket.emit("friend:request-cancel", { toAccountId, fromAccountId });
-}
-
-/** Мои входящие заявки (для вкладки "Заявки") */
-export function getFriendRequests(accountId) {
+/** Удалить из друзей — тоже сразу и взаимно */
+export function removeFriendMutual({ myAccountId, friendId }) {
   return new Promise((resolve) => {
     if (!socket.connected) socket.connect();
-    socket.emit("friend:get-requests", accountId, (list) => resolve(list || []));
+    socket.emit("friend:remove", { myAccountId, friendId }, (res) => resolve(res));
   });
 }
 
-/** Принять/отклонить входящую заявку */
-export function respondFriendRequest({ myAccountId, fromAccountId, accepted }) {
+/** Мой актуальный список друзей (с сервера — не только с этого устройства) */
+export function getFriendsList(accountId) {
   return new Promise((resolve) => {
     if (!socket.connected) socket.connect();
-    socket.emit(
-      "friend:request-respond",
-      { toAccountId: myAccountId, fromAccountId, accepted },
-      (res) => resolve(res)
-    );
+    socket.emit("friend:get-list", accountId, (list) => resolve(list || []));
   });
 }
 
-/** Подписка: мне прислали новую заявку в друзья (живое уведомление) */
-export function onFriendRequestReceived(callback) {
-  socket.on("friend:request-received", callback);
-  return () => socket.off("friend:request-received", callback);
+/** Подписка: кто-то добавил меня в друзья прямо сейчас (живое обновление) */
+export function onFriendAdded(callback) {
+  socket.on("friend:added", callback);
+  return () => socket.off("friend:added", callback);
 }
 
-/** Подписка: кто-то принял мою заявку в друзья */
-export function onFriendRequestAccepted(callback) {
-  socket.on("friend:request-accepted", callback);
-  return () => socket.off("friend:request-accepted", callback);
+/** Подписка: кто-то удалил меня из друзей */
+export function onFriendRemoved(callback) {
+  socket.on("friend:removed", callback);
+  return () => socket.off("friend:removed", callback);
 }

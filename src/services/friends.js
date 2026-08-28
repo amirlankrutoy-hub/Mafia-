@@ -1,8 +1,25 @@
-// friends.js — список друзей и недавних игроков (хранится локально на устройстве).
+// friends.js — недавние игроки (хранится локально на устройстве, привязано к аккаунту).
+// Список друзей теперь хранится на сервере (см. presence.js: getFriendsList,
+// addFriendMutual) — здесь остались только "недавние игроки".
 
-const FRIENDS_KEY = "mafia_friends_v1"; // [{ id, name }]
 const RECENT_KEY = "mafia_recent_players_v1"; // [{ id, name, lastPlayedAt }]
+const ACCOUNT_KEY = "mafia_account_v1";
 const MAX_RECENT = 20;
+
+function getCurrentAccountId() {
+  try {
+    const raw = localStorage.getItem(ACCOUNT_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw)?.id || null;
+  } catch {
+    return null;
+  }
+}
+
+function recentKey() {
+  const id = getCurrentAccountId();
+  return id ? `${RECENT_KEY}_${id}` : RECENT_KEY;
+}
 
 function readList(key) {
   try {
@@ -18,51 +35,8 @@ function writeList(key, list) {
   window.dispatchEvent(new CustomEvent("mafia-friends-changed"));
 }
 
-export function getFriends() {
-  return readList(FRIENDS_KEY);
-}
-
-export function isFriend(id) {
-  return getFriends().some((f) => f.id === id);
-}
-
-export function addFriend({ id, name }) {
-  if (!id) return;
-  const list = getFriends();
-  if (list.some((f) => f.id === id)) return;
-  list.push({ id, name: name || `Игрок ${id}` });
-  writeList(FRIENDS_KEY, list);
-  import("./achievementsService").then((m) => m.recordEvent("friend_added")).catch(() => {});
-}
-
-export function removeFriend(id) {
-  const list = getFriends().filter((f) => f.id !== id);
-  writeList(FRIENDS_KEY, list);
-}
-
 export function getRecentPlayers() {
-  return readList(RECENT_KEY);
-}
-
-// ---------- Отправленные заявки в друзья (для состояния кнопки "Дружить") ----------
-const SENT_REQUESTS_KEY = "mafia_sent_friend_requests_v1"; // [accountId]
-
-export function getSentRequests() {
-  return readList(SENT_REQUESTS_KEY);
-}
-
-export function isSentRequest(id) {
-  return getSentRequests().includes(id);
-}
-
-export function markRequestSent(id) {
-  if (!id) return;
-  const list = getSentRequests();
-  if (!list.includes(id)) writeList(SENT_REQUESTS_KEY, [...list, id]);
-}
-
-export function unmarkRequestSent(id) {
-  writeList(SENT_REQUESTS_KEY, getSentRequests().filter((x) => x !== id));
+  return readList(recentKey());
 }
 
 /** Вызывать когда игрок оказывается в одном лобби с другими (id != мой id) */
@@ -82,5 +56,5 @@ export function noteRecentPlayers(players, myId) {
   });
 
   list.sort((a, b) => b.lastPlayedAt - a.lastPlayedAt);
-  writeList(RECENT_KEY, list.slice(0, MAX_RECENT));
+  writeList(recentKey(), list.slice(0, MAX_RECENT));
 }

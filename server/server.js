@@ -99,16 +99,33 @@ function publicProfile(accountId) {
 }
 
 // ==========================
-// Заявки в друзья: хранятся на диске (server/data/social.json), пока не
-// приняты/отклонены — переживают перезапуск сервера.
-// Если получатель сейчас онлайн — уведомление придёт мгновенно;
-// в любом случае заявка видна во вкладке "Заявки" при следующем заходе.
+// Друзья — без заявок: добавление сразу и взаимно. Хранятся на диске
+// (server/data/social.json), переживают перезапуск сервера.
 // ==========================
-const friendRequests = socialStore.readAll().friendRequests; // toAccountId -> [{ fromAccountId, fromName, fromIcon, createdAt }]
+const friendRequests = socialStore.readAll().friendRequests; // оставлено для обратной совместимости, больше не используется
+const friendsList = socialStore.readAll().friends || {}; // accountId -> [friendId, ...]
 
-// Сохраняет оба хранилища на диск — вызывается после любого изменения
+// Сохраняет всё хранилище на диск — вызывается после любого изменения
 function saveSocial() {
-    socialStore.writeAll(accountProfiles, friendRequests);
+    socialStore.writeAll(accountProfiles, friendRequests, friendsList);
+}
+
+function addMutualFriend(accountId, friendId) {
+    if (!friendsList[accountId]) friendsList[accountId] = [];
+    if (!friendsList[accountId].includes(friendId)) {
+        friendsList[accountId].push(friendId);
+    }
+}
+
+function friendProfile(id) {
+    const prof = accountProfiles[id] || {};
+    return {
+        id,
+        name: prof.name || `Игрок #${id}`,
+        icon: prof.icon || null,
+        wins: typeof prof.wins === "number" ? prof.wins : 0,
+        online: !!presence[id]
+    };
 }
 
 // ==========================
@@ -283,80 +300,67 @@ io.on("connection", (socket) => {
     });
 
     // ==========================
-    // Заявки в друзья
+    // Друзья — без заявок: добавление сразу и взаимно, обеим сторонам.
+    // Список хранится на диске (server/data/social.json), поэтому виден
+    // сразу же и переживает перезапуск сервера.
     // ==========================
 
-    // Отправить заявку
-    socket.on("friend:request-send", ({ toAccountId, fromAccountId, fromName, fromIcon }, callback) => {
+    // Добавить в друзья — сразу взаимно, без подтверждения второй стороны
+    socket.on("friend:add", ({ toAccountId, fromAccountId, fromName, fromIcon }, callback) => {
         const cb = typeof callback === "function" ? callback : () => {};
         if (!toAccountId || !fromAccountId || toAccountId === fromAccountId) {
             return cb({ success: false, message: "Некорректный запрос" });
         }
 
-        if (!friendRequests[toAccountId]) friendRequests[toAccountId] = [];
-        const already = friendRequests[toAccountId].some((r) => r.fromAccountId === fromAccountId);
-        if (!already) {
-            friendRequests[toAccountId].push({
-                fromAccountId,
-                fromName: fromName || "Игрок",
-                fromIcon: fromIcon || null,
-                createdAt: Date.now()
-            });
+        addMutualFriend(fromAccountId, toAccountId);
+        addMutualFriend(toAccountId, fromAccountId);
+        saveSocial();
+
+        // Обновим профиль отправителя, если прислал свежее имя/иконку
+        if (fromName || fromIcon !== undefined) {
+            accountProfiles[fromAccountId] = {
+                ...accountProfiles[fromAccountId],
+                ...(fromName ? { name: fromName } : {}),
+                ...(fromIcon !== undefined ? { icon: fromIcon } : {})
+            };
             saveSocial();
         }
 
+        // Получателю — живое уведомление, если он сейчас онлайн
         const targetSocketId = presence[toAccountId]?.socketId;
         if (targetSocketId) {
-            io.to(targetSocketId).emit("friend:request-received", {
-                fromAccountId,
-                fromName: fromName || "Игрок",
-                fromIcon: fromIcon || null
-            });
+            io.to(targetSocketId).emit("friend:added", friendProfile(fromAccountId));
         }
 
-        cb({ success: true });
+        cb({ success: true, friend: friendProfile(toAccountId) });
     });
 
-    // Отменить свою отправленную заявку (повторное нажатие "Дружить")
-    socket.on("friend:request-cancel", ({ toAccountId, fromAccountId }) => {
-        if (!toAccountId || !friendRequests[toAccountId]) return;
-        friendRequests[toAccountId] = friendRequests[toAccountId].filter(
-            (r) => r.fromAccountId !== fromAccountId
-        );
-        saveSocial();
-    });
-
-    // Получить свои входящие заявки (вкладка "Заявки")
-    socket.on("friend:get-requests", (accountId, callback) => {
-        if (typeof callback !== "function") return;
-        callback(friendRequests[accountId] || []);
-    });
-
-    // Принять/отклонить заявку
-    socket.on("friend:request-respond", ({ toAccountId, fromAccountId, accepted }, callback) => {
+    // Удалить из друзей — тоже сразу и взаимно
+    socket.on("friend:remove", ({ myAccountId, friendId }, callback) => {
         const cb = typeof callback === "function" ? callback : () => {};
+        if (!myAccountId || !friendId) return cb({ success: false });
 
-        if (friendRequests[toAccountId]) {
-            friendRequests[toAccountId] = friendRequests[toAccountId].filter(
-                (r) => r.fromAccountId !== fromAccountId
-            );
-            saveSocial();
+        if (friendsList[myAccountId]) {
+            friendsList[myAccountId] = friendsList[myAccountId].filter((id) => id !== friendId);
         }
+        if (friendsList[friendId]) {
+            friendsList[friendId] = friendsList[friendId].filter((id) => id !== myAccountId);
+        }
+        saveSocial();
 
-        if (accepted) {
-            const requesterSocketId = presence[fromAccountId]?.socketId;
-            if (requesterSocketId) {
-                io.to(requesterSocketId).emit("friend:request-accepted", {
-                    byAccountId: toAccountId,
-                    byName:
-                        presence[toAccountId]?.name ||
-                        accountProfiles[toAccountId]?.name ||
-                        "Игрок"
-                });
-            }
+        const targetSocketId = presence[friendId]?.socketId;
+        if (targetSocketId) {
+            io.to(targetSocketId).emit("friend:removed", { byAccountId: myAccountId });
         }
 
         cb({ success: true });
+    });
+
+    // Мой список друзей — всегда с сервера, поэтому виден сразу с любого устройства
+    socket.on("friend:get-list", (accountId, callback) => {
+        if (typeof callback !== "function") return;
+        const ids = friendsList[accountId] || [];
+        callback(ids.map(friendProfile));
     });
 
     // ==========================
