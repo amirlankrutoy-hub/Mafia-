@@ -5,6 +5,12 @@
       "icon": "/avatars/avatar17.svg",
       "favoriteRole": "vor",
       "wins": 0
+    },
+    "874513": {
+      "name": "=",
+      "icon": "/avatars/avatar1.svg",
+      "favoriteRole": null,
+      "wins": 0
     }
   },
   "friendRequests": {}
