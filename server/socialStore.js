@@ -16,8 +16,11 @@ const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
 const FILE = path.join(DATA_DIR, "social.json");
 const SAVE_DELAY_MS = 1500;
 
-const REDIS_URL = (process.env.UPSTASH_REDIS_REST_URL || "").replace(/\/$/, "");
-const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || "";
+// Убираем пробелы и кавычки — их часто случайно вставляют вместе со значением
+const cleanEnv = (v) => String(v || "").trim().replace(/^["']+|["']+$/g, "").trim();
+let REDIS_URL = cleanEnv(process.env.UPSTASH_REDIS_REST_URL).replace(/\/$/, "");
+if (REDIS_URL && !/^https?:\/\//.test(REDIS_URL)) REDIS_URL = "https://" + REDIS_URL;
+const REDIS_TOKEN = cleanEnv(process.env.UPSTASH_REDIS_REST_TOKEN);
 const REDIS_KEY = process.env.UPSTASH_KEY || "mafia:social";
 const useRedis = !!(REDIS_URL && REDIS_TOKEN);
 
@@ -64,6 +67,13 @@ async function init() {
       const raw = await redis(["GET", REDIS_KEY]);
       if (raw) merge(JSON.parse(raw));
       console.log("💾 Данные загружены из Upstash Redis");
+      // Первый запуск с пустой базой — переносим данные из старого файла
+      if (!raw) {
+        try {
+          merge(JSON.parse(fs.readFileSync(FILE, "utf8")));
+          save();
+        } catch (_) {}
+      }
       return;
     } catch (err) {
       console.error("⚠️ Не удалось прочитать Upstash, используем файл:", err.message);
