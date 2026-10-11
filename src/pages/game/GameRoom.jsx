@@ -1,117 +1,162 @@
 import { useEffect, useRef, useState } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faBookOpen, faXmark, faGhost } from "@fortawesome/free-solid-svg-icons";
 import { socket } from "../../socket";
 import MayorPanel from "./MayorPanel";
-import PlayerNight from "./PlayerNight";
-import VotingScreen from "./VotingScreen";
-import BlackPhrase from "./BlackPhrase";
 import DeathScreamer from "./DeathScreamer";
-import MayorExecutionScreen from "./MayorExecutionScreen";
+import AbilityBar from "../../components/AbilityBar";
 import roles from "../../data/roles";
-import { WIN_REWARDS } from "../../data/shopData";
 import { credit } from "../../services/wallet";
-import { registerWin } from "../../services/presence";
-import { useLanguage } from "../../context/LanguageContext";
+import { recordEvent } from "../../services/achievementsService";
+import { toast } from "../../services/toast";
+import {
+  NightPublic,
+  NightTurn,
+  WaitScreen,
+  Morning,
+  Voting,
+  Verdict,
+  VoteResult,
+  Ended,
+  WaitingReady,
+  Stage
+} from "./screens";
 
-export default function GameRoom({
-  roomCode,
-  isMayor,
-  players: initialPlayers,
-  myRole,
-  account,
-  onLeaveToLobby
-}) {
-  const { t } = useLanguage();
-  const [phase, setPhase] = useState("waiting_ready");
-  const [players, setPlayers] = useState(initialPlayers || []);
-  const [nightInfo, setNightInfo] = useState(null);
-  const [isMyTurn, setIsMyTurn] = useState(false);
-  const [phrase, setPhrase] = useState("");
-  const [morningResults, setMorningResults] = useState([]);
-  const [voteData, setVoteData] = useState(null);
-  const [pendingCandidate, setPendingCandidate] = useState(null);
-  const [voteResult, setVoteResult] = useState(null);
-  const [winner, setWinner] = useState(null);
-  const [mvp, setMvp] = useState(null);
-  const [mvpShown, setMvpShown] = useState(false);
+// Награда за победу (Токены)
+const REWARD_BY_ROLE = { poklon: 100, stukach: 100 };
+const REWARD_BY_CATEGORY = { civilians: 100, mafia: 150, neutrals: 150 };
+
+function emitAck(event, ...args) {
+  return new Promise((resolve) => {
+    const t = setTimeout(() => resolve({ success: false, message: "Сервер не ответил" }), 8000);
+    socket.emit(event, ...args, (res) => {
+      clearTimeout(t);
+      resolve(res);
+    });
+  });
+}
+
+export default function GameRoom({ roomCode, isMayor, players: initialPlayers, myRole, team, resume, onLeaveToLobby }) {
+  const initial = resume?.phase || null;
+  const [phaseData, setPhaseData] = useState(initial || { phase: "waiting_ready" });
+  const [players, setPlayers] = useState(resume?.players || initialPlayers || []);
   const [readyCount, setReadyCount] = useState(0);
-  const [loadingText, setLoadingText] = useState("");
-  const [privateInfo, setPrivateInfo] = useState(null);
   const [readySent, setReadySent] = useState(false);
   const [dying, setDying] = useState(null);
-  const [earnedReward, setEarnedReward] = useState(0);
+  const [alive, setAlive] = useState(resume ? resume.alive !== false : true);
+  const [notes, setNotes] = useState([]);
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [teamChoices, setTeamChoices] = useState([]);
+  const [voteProgress, setVoteProgress] = useState(null);
+  const [nightProgress, setNightProgress] = useState(null);
+  const [mvpShown, setMvpShown] = useState(false);
+  const [earned, setEarned] = useState(0);
   const [playAgainState, setPlayAgainState] = useState("idle");
-  const rewardGivenRef = useRef(false);
+  const rewardGiven = useRef(false);
+  const lastNightRef = useRef(null);
+  const deathCause = useRef(null);
+
+  const phase = phaseData.phase;
 
   useEffect(() => {
     const onPhase = (data) => {
-      setPhase(data.phase);
+      if (!data?.phase) return;
       if (data.players) setPlayers(data.players);
-      if (data.phrase) setPhrase(data.phrase);
-      if (data.nightInfo) {
-        setNightInfo(data.nightInfo);
-        const actorIds = (data.nightInfo.actors || []).map((a) => a.id);
-        setIsMyTurn(!isMayor && actorIds.includes(socket.id));
-      } else {
-        setIsMyTurn(false);
-      }
-      if (data.results) setMorningResults(data.results);
-      if (data.vote) setVoteData(data.vote);
-      if (data.phase === "vote_pending") {
-        setPendingCandidate(data.candidate || null);
-      }
-      if (data.voteResult) setVoteResult(data.voteResult);
-      if (data.winner) setWinner(data.winner);
-      if (data.phase === "ended") setMvp(data.mvp || null);
       if (data.readyCount != null) setReadyCount(data.readyCount);
-      if (data.loadingText) setLoadingText(data.loadingText);
+      if (data.phase === "night") {
+        // Свой ход приходит отдельным сообщением после общего — не затираем его
+        setPhaseData((prev) => {
+          if (prev.phase === "night" && prev.nightInfo?.yourTurn && !data.nightInfo?.yourTurn && prev.nightInfo.step?.role === data.nightInfo?.step?.role && prev.nightInfo.night === data.nightInfo?.night) {
+            return prev;
+          }
+          return data;
+        });
+        if (lastNightRef.current !== data.nightInfo?.step?.role) {
+          lastNightRef.current = data.nightInfo?.step?.role;
+          setTeamChoices([]);
+          setNightProgress(null);
+        }
+        return;
+      }
+      if (data.phase === "voting") setVoteProgress(null);
+      // Мэру предпросмотр ночи приходит отдельно — не затираем общим сообщением
+      setPhaseData((prev) => (data.phase === "night_end" && prev.phase === "night_end" && prev.results && !data.results ? prev : data));
     };
-
-    const onYouDied = (data) => setDying(data);
+    const onPlayers = (list) => setPlayers(list);
+    const onPrivate = (info) => {
+      setNotes((n) => [...n, { text: info.text, at: Date.now() }]);
+      toast({ kind: "info", title: "Секретные сведения", text: info.text, duration: 12000 });
+    };
+    const onDied = (data) => {
+      deathCause.current = data?.killedBy === "execution" ? "vote" : "night";
+      setAlive(false);
+      setDying(data);
+    };
+    const onTeamChoice = (c) => setTeamChoices((prev) => [...prev.filter((x) => x.name !== c.name), c]);
+    const onVoteProgress = (p) => setVoteProgress(p);
+    const onNightProgress = (p) => setNightProgress(p);
+    const onToast = ({ text }) => toast({ kind: "announce", text, duration: 8000 });
 
     socket.on("game-phase", onPhase);
-    socket.on("private-info", (info) => setPrivateInfo(info));
-    socket.on("you-died", onYouDied);
-
+    socket.on("game-players", onPlayers);
+    socket.on("private-info", onPrivate);
+    socket.on("you-died", onDied);
+    socket.on("team-choice", onTeamChoice);
+    socket.on("vote-progress", onVoteProgress);
+    socket.on("night-progress", onNightProgress);
+    socket.on("game-toast", onToast);
     return () => {
       socket.off("game-phase", onPhase);
-      socket.off("private-info");
-      socket.off("you-died", onYouDied);
+      socket.off("game-players", onPlayers);
+      socket.off("private-info", onPrivate);
+      socket.off("you-died", onDied);
+      socket.off("team-choice", onTeamChoice);
+      socket.off("vote-progress", onVoteProgress);
+      socket.off("night-progress", onNightProgress);
+      socket.off("game-toast", onToast);
     };
-  }, [isMayor]);
+  }, []);
 
-  // Награда Мафио за победу: выдаётся один раз, только реальным игрокам
-  // (у мэра нет роли и он не считается участником). Хук должен стоять
-  // до любых ранних return, иначе нарушается порядок вызова хуков.
+  // Семья мафии — в блокнот
   useEffect(() => {
-    if (!winner || isMayor || !myRole || rewardGivenRef.current) return;
+    if (team && team.length > 1) {
+      setNotes((n) =>
+        n.some((x) => x.team) ? n : [{ team: true, text: `Ваша семья: ${team.map((m) => `${m.name} (${m.roleName})`).join(", ")}` }, ...n]
+      );
+    }
+  }, [team]);
 
-    const rule = WIN_REWARDS[winner.winner];
-    if (!rule) return;
-
-    const roleInfo = roles.find((r) => r.id === myRole);
-    if (!roleInfo || !rule.categories.includes(roleInfo.category)) return;
-
-    const amount = rule.exceptions?.[myRole] ?? rule.amount;
-    rewardGivenRef.current = true;
-    credit(amount);
-    setEarnedReward(amount);
-    if (account?.id) registerWin(account.id);
-  }, [winner, isMayor, myRole]);
-
-  // Экран "Игрок матча" держим 5 секунд, потом у мэра появляется "Играть снова".
+  // Итог игры: награда (один раз) и экран "Игрок матча"
   useEffect(() => {
-    if (!winner) {
+    if (phase !== "ended") {
       setMvpShown(false);
       return;
     }
-    const delay = mvp ? 5000 : 0;
-    const t = setTimeout(() => setMvpShown(true), delay);
+    if (!isMayor && myRole && !rewardGiven.current) {
+      rewardGiven.current = true;
+      const won = (phaseData.winners || []).includes(socket.id);
+      const cat = roles.find((r) => r.id === myRole)?.category;
+      recordEvent("game_played");
+      recordEvent("game_result", { won, team: cat, role: myRole, alive, killedBy: deathCause.current });
+      if (won) {
+        const amount = REWARD_BY_ROLE[myRole] ?? REWARD_BY_CATEGORY[cat] ?? 100;
+        credit(amount);
+        setEarned(amount);
+      }
+    }
+    const t = setTimeout(() => setMvpShown(true), phaseData.mvp ? 4000 : 800);
     return () => clearTimeout(t);
-  }, [winner, mvp]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, phaseData, isMayor, myRole]);
 
-  // Игрока убили (ночью, на голосовании или рукой мэра) —
-  // показываем скример, затем отправляем его в лобби.
-  // Мэра это не касается: у него роли и смерти нет.
+  const playAgain = async () => {
+    setPlayAgainState("sending");
+    const res = await emitAck("play-again", roomCode);
+    setPlayAgainState("idle");
+    if (!res?.success) toast({ kind: "error", text: res?.message || "Не удалось начать заново" });
+  };
+
+  // ---------- Смерть: скример, затем режим зрителя ----------
   if (dying) {
     return (
       <DeathScreamer
@@ -119,286 +164,199 @@ export default function GameRoom({
         variant={dying.killedBy === "mafia" ? "mafia" : "generic"}
         onEnd={() => {
           setDying(null);
-          if (!isMayor) onLeaveToLobby?.();
         }}
       />
     );
   }
 
-  if (winner) {
-    return (
-      <div className="fixed inset-0 z-[300] bg-black flex flex-col items-center justify-center text-center p-8">
-        <h1 className="text-5xl text-yellow-400 font-black mb-4">
-          {t("game_over")}
-        </h1>
-        <p className="text-3xl text-white">
-          {t("victory")}: {winner.label || winner.winner}
-        </p>
-        {winner.reason && (
-          <p className="text-gray-400 mt-4">{winner.reason}</p>
-        )}
-        {earnedReward > 0 && (
-          <p className="mt-6 text-xl text-[#d4af37] font-bold">
-            + {earnedReward} Мафио начислено на ваш счёт
-          </p>
-        )}
-
-        {mvp && (
-          <div className="mt-10 flex flex-col items-center gap-3">
-            <div className="relative h-32 w-32 rounded-full overflow-hidden border-4 border-[#d4af37] shadow-[0_0_30px_rgba(212,175,55,0.6)]">
-              <img
-                src={mvp.avatar || "/avatars/avatar1.svg"}
-                alt={mvp.name}
-                className="h-full w-full object-cover"
-              />
+  const myRoleInfo = roles.find((r) => r.id === myRole);
+  const overlay = !isMayor && myRoleInfo && phase !== "ended" && (
+    <>
+      <button
+        type="button"
+        onClick={() => setNotesOpen(true)}
+        className="fixed bottom-4 left-4 z-[640] flex items-center gap-2 rounded-full border border-[#d4af37]/50 bg-black/70 py-1.5 pl-1.5 pr-4 text-sm font-bold text-[#f3e5ab] backdrop-blur transition hover:border-[#f3d27a]"
+      >
+        <img src={myRoleInfo.image} alt="" className="h-9 w-9 rounded-full object-cover" />
+        <span className="hidden sm:inline">{myRoleInfo.name}</span>
+        <FontAwesomeIcon icon={faBookOpen} className="text-[#d4af37]" />
+        {notes.length > 0 && <span className="rounded-full bg-[#c0151f] px-1.5 text-[10px] text-white">{notes.length}</span>}
+      </button>
+      {!alive && (
+        <div className="fixed left-1/2 top-3 z-[640] -translate-x-1/2 rounded-full border border-white/10 bg-black/70 px-4 py-1.5 text-xs text-zinc-300 backdrop-blur">
+          <FontAwesomeIcon icon={faGhost} className="mr-1.5" /> Вы выбыли — наблюдайте за игрой
+        </div>
+      )}
+      {notesOpen && (
+        <div className="fixed inset-0 z-[700] flex items-end justify-center bg-black/60 p-4 backdrop-blur-sm sm:items-center" onClick={() => setNotesOpen(false)}>
+          <div className="noir-card w-full max-w-md p-6 anim-fade-up" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-display text-2xl font-black gold-text">Блокнот</h3>
+              <button onClick={() => setNotesOpen(false)} className="text-[#a8916c]"><FontAwesomeIcon icon={faXmark} /></button>
             </div>
-            <p className="text-2xl font-bold text-white">{mvp.name}</p>
-            <p className="mvp-blink text-3xl font-black uppercase tracking-widest">
-              {t("player_of_match")}
-            </p>
-            <style>{`
-              .mvp-blink {
-                animation: mvpBlink 1s infinite alternate;
-              }
-              @keyframes mvpBlink {
-                0% { color: #8b0000; text-shadow: 0 0 10px #8b0000, 0 0 20px #8b0000; }
-                100% { color: #d4af37; text-shadow: 0 0 14px #d4af37, 0 0 28px #d4af37; }
-              }
-            `}</style>
-          </div>
-        )}
-
-        {isMayor && !mvpShown && (
-          <p className="mt-10 text-sm text-gray-500 animate-pulse">
-            Определяем игрока матча...
-          </p>
-        )}
-
-        {isMayor && mvpShown && (
-          <button
-            type="button"
-            disabled={playAgainState === "sending"}
-            onClick={() => {
-              setPlayAgainState("sending");
-              let answered = false;
-
-              socket.emit("play-again", roomCode, (res) => {
-                answered = true;
-                if (res?.success) {
-                  setPlayAgainState("idle");
-                } else {
-                  setPlayAgainState("idle");
-                  alert(
-                    res?.message ||
-                      "Не удалось начать игру заново. Попробуйте ещё раз."
-                  );
-                }
-              });
-
-              // Если сервер вообще не ответил за 5 секунд — значит
-              // событие даже не дошло (сервер не тот/не перезапущен/
-              // разрыв соединения), а не то что мэра не узнали.
-              setTimeout(() => {
-                if (!answered) {
-                  setPlayAgainState("idle");
-                  alert(
-                    "Сервер не ответил. Проверьте соединение или что бэкенд перезапущен с последним кодом."
-                  );
-                }
-              }, 5000);
-            }}
-            className="mt-10 rounded-xl bg-gradient-to-r from-[#8b0000] to-[#5c0000] border border-[#d4af37] px-10 py-4 text-xl font-bold text-[#f3e5ab] hover:brightness-125 disabled:opacity-50"
-          >
-            {playAgainState === "sending" ? t("sending") : t("play_again")}
-          </button>
-        )}
-      </div>
-    );
-  }
-
-  if (phase === "loading") {
-    return (
-      <div className="fixed inset-0 z-[300] bg-black flex items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-4xl text-yellow-400 mb-4">
-            {loadingText || "Загрузка..."}
-          </h2>
-          <div className="h-2 w-64 bg-zinc-800 rounded-full overflow-hidden mx-auto">
-            <div className="h-full bg-yellow-500 animate-pulse w-full" />
+            <div className="mt-4 flex gap-3 rounded-xl bg-black/30 p-3">
+              <img src={myRoleInfo.image} alt="" className="h-16 w-16 rounded-lg object-cover" />
+              <div>
+                <div className="font-bold text-[#f3e5ab]">{myRoleInfo.name}</div>
+                <div className="text-xs text-[#a8916c]">{myRoleInfo.ability}</div>
+              </div>
+            </div>
+            <div className="mt-4 max-h-64 space-y-2 overflow-y-auto">
+              {notes.length === 0 ? (
+                <p className="text-sm text-[#a8916c]">Здесь появятся сведения, которые вы узнаете ночью.</p>
+              ) : (
+                notes.map((n, i) => (
+                  <p key={i} className="rounded-lg border border-[#d4af37]/15 bg-black/30 px-3 py-2 text-sm text-[#e6d5bc]">{n.text}</p>
+                ))
+              )}
+            </div>
           </div>
         </div>
-      </div>
-    );
-  }
+      )}
+      {alive && (phase === "night" || phase === "voting") && (
+        <AbilityBar phase={phase === "night" ? "night" : "day"} roomCode={roomCode} players={players} />
+      )}
+    </>
+  );
 
-  if (phase === "vote_result" && voteResult) {
-    return (
-      <div className="fixed inset-0 z-[300] bg-black flex items-center justify-center">
-        <h1
-          className="text-5xl font-black text-red-600 tracking-widest text-center px-6"
-          style={{ textShadow: "0 0 20px #8b0000" }}
-        >
-          {voteResult.executed
-            ? `${voteResult.executed.name} был казнён`
-            : "Никто не был казнён"}
-        </h1>
-      </div>
-    );
-  }
-
-  if ((phase === "voting" || phase === "voting_runoff") && voteData) {
-    const blocked = (voteData.blockedVoters || []).includes(socket.id);
-    return (
-      <VotingScreen
-        round={voteData.round}
-        players={voteData.candidates || []}
-        endsAt={voteData.endsAt}
-        isMayor={isMayor}
-        blocked={blocked}
-        onVote={(tid) => socket.emit("cast-vote", roomCode, tid)}
-        onForceEnd={() => socket.emit("finish-voting", roomCode)}
-      />
-    );
-  }
-
-  if (phase === "vote_pending") {
-    if (isMayor) {
-      const candidate = pendingCandidate
-        ? {
-            ...pendingCandidate,
-            avatar: players.find((p) => p.id === pendingCandidate.id)?.avatar
-          }
-        : null;
+  const screen = (() => {
+    if (phase === "ended") {
       return (
-        <MayorExecutionScreen
-          candidate={candidate}
-          onExecute={() => socket.emit("mayor-execute", roomCode)}
+        <Ended
+          winner={phaseData.winner}
+          winners={phaseData.winners}
+          mvp={phaseData.mvp}
+          players={phaseData.players || players}
+          myId={socket.id}
+          earned={earned}
+          isMayor={isMayor}
+          mvpShown={mvpShown}
+          playAgainState={playAgainState}
+          onPlayAgain={playAgain}
         />
       );
     }
-    return (
-      <div className="fixed inset-0 z-[300] bg-black flex items-center justify-center">
-        <p className="text-2xl text-yellow-400 animate-pulse">
-          Мэр выносит приговор...
-        </p>
-      </div>
-    );
-  }
 
-  if (phase === "night_end" && !isMayor) {
-    return (
-      <BlackPhrase text="Ночь подходит к концу... мэр решает, когда наступит утро" />
-    );
-  }
+    if (phase === "loading") return <WaitScreen title={phaseData.loadingText || "Загрузка…"} tone="noir" />;
 
-  if (isMayor) {
-    return (
-      <MayorPanel
-        roomCode={roomCode}
-        phase={phase}
-        players={players}
-        nightInfo={nightInfo}
-        morningResults={morningResults}
-        readyCount={readyCount}
-        onBeginNight={() => socket.emit("begin-night", roomCode)}
-        onMorning={() => socket.emit("mayor-morning", roomCode)}
-        onBeginVote={() => socket.emit("begin-voting", roomCode)}
-        onNextNight={() => socket.emit("night-next", roomCode)}
-        onKill={(id, reason) =>
-          socket.emit("mayor-kill", roomCode, id, reason)
-        }
-        onForceWin={(side, reason) =>
-          socket.emit("mayor-force-win", roomCode, side, reason)
-        }
-      />
-    );
-  }
+    if (phase === "vote_result") return <VoteResult voteResult={phaseData.voteResult} />;
 
-  if (phase === "waiting_ready") {
-    const myRoleInfo = roles.find((r) => r.id === myRole);
-    return (
-      <div className="fixed inset-0 z-[300] bg-black flex flex-col items-center justify-center gap-6">
-        <h2 className="text-3xl text-yellow-400">Ваша роль получена</h2>
-        {myRoleInfo && (
-          <div className="flex flex-col items-center gap-3">
-            <img
-              src={myRoleInfo.image}
-              alt={myRoleInfo.name}
-              className="w-32 h-32 rounded-2xl object-cover border-2 border-yellow-500 shadow-[0_0_20px_rgba(212,175,55,0.4)]"
-            />
-            <p className="text-xl text-white">
-              Вы: <span className="text-yellow-500 font-bold">{myRoleInfo.name}</span>
-            </p>
-          </div>
-        )}
-        <button
-          type="button"
-          disabled={readySent}
-          onClick={() => {
-            if (readySent) return;
+    if (phase === "voting") {
+      const blocked = (phaseData.vote?.blockedVoters || []).includes(socket.id);
+      return (
+        <Voting
+          vote={phaseData.vote}
+          isMayor={isMayor}
+          canVote={!isMayor && alive && !blocked}
+          blockedReason={!isMayor && alive && blocked ? "Ваш голос этой ночью украли — вы не голосуете" : !isMayor && !alive ? "Вы выбыли и не голосуете" : null}
+          progress={voteProgress}
+          onVote={(tid) => {
+            recordEvent("vote_cast");
+            return emitAck("cast-vote", roomCode, tid);
+          }}
+          onFinish={() => socket.emit("finish-voting", roomCode)}
+        />
+      );
+    }
+
+    if (phase === "vote_pending") {
+      const c = phaseData.candidate;
+      return (
+        <Verdict
+          candidate={c}
+          avatar={players.find((p) => p.id === c?.id)?.avatar}
+          isMayor={isMayor}
+          onExecute={() => socket.emit("mayor-execute", roomCode, false)}
+          onPardon={() => socket.emit("mayor-execute", roomCode, true)}
+        />
+      );
+    }
+
+    if (isMayor) {
+      return (
+        <MayorPanel
+          roomCode={roomCode}
+          phase={phase}
+          players={players}
+          nightInfo={phaseData.nightInfo}
+          nightProgress={nightProgress}
+          morningResults={phaseData.results || []}
+          readyCount={readyCount}
+          onBeginNight={() => socket.emit("begin-night", roomCode)}
+          onMorning={() => socket.emit("mayor-morning", roomCode)}
+          onBeginVote={() => socket.emit("begin-voting", roomCode)}
+          onNextNight={() => socket.emit("night-next", roomCode)}
+          onKill={(id, reason) => socket.emit("mayor-kill", roomCode, id, reason)}
+          onForceWin={(side, reason) => socket.emit("mayor-force-win", roomCode, side, reason)}
+        />
+      );
+    }
+
+    if (phase === "waiting_ready") {
+      return (
+        <WaitingReady
+          myRole={myRole}
+          team={team}
+          readyCount={readyCount}
+          total={players.filter((p) => p.alive !== false).length}
+          readySent={readySent}
+          onReady={() => {
             setReadySent(true);
             socket.emit("game-player-ready", roomCode);
           }}
-          className={`px-10 py-4 rounded-xl text-xl font-bold transition ${
-            readySent
-              ? "bg-green-700 text-white cursor-default"
-              : "bg-red-700 hover:bg-red-600 text-white"
-          }`}
-        >
-          {readySent ? t("waiting_for_players") : t("ready")}
-        </button>
-        <p className="text-gray-500">{t("ready_count")}: {readyCount}</p>
-      </div>
-    );
-  }
-
-  if (phase === "night" || phase === "night_wait") {
-    if (isMyTurn && nightInfo) {
-      return (
-        <PlayerNight
-          step={nightInfo.step}
-          targets={nightInfo.targets}
-          onAction={(targetId, mode) =>
-            socket.emit("night-action", roomCode, { targetId, mode })
-          }
-          onDone={() => socket.emit("night-next", roomCode)}
         />
       );
     }
-    return <BlackPhrase text={phrase || nightInfo?.phrase} />;
-  }
 
-  if (phase === "morning") {
+    if (phase === "night") {
+      const info = phaseData.nightInfo || {};
+      if (info.yourTurn && alive) {
+        return (
+          <NightTurn
+            step={info.step}
+            targets={info.targets}
+            team={info.team}
+            teamChoices={teamChoices}
+            onAction={(targetId, mode) => {
+              recordEvent("night_action", { role: myRole });
+              return emitAck("night-action", roomCode, { targetId, mode });
+            }}
+          />
+        );
+      }
+      return <NightPublic phrase={phaseData.phrase} label={info.step?.label} night={info.night} />;
+    }
+
+    if (phase === "night_wait") {
+      return <WaitScreen title="Выбор сделан" text={phaseData.phrase || "Ждём решения остальных…"} />;
+    }
+
+    if (phase === "night_end") {
+      return <WaitScreen title="Ночь подходит к концу…" text="Мэр решает, когда наступит утро" />;
+    }
+
+    if (phase === "morning") return <Morning day={phaseData.day} results={phaseData.results || []} />;
+
     return (
-      <div className="fixed inset-0 z-[300] bg-black flex flex-col items-center justify-center p-8">
-        <h2 className="text-4xl text-yellow-400 mb-6">Утро</h2>
-        <ul className="text-white text-xl space-y-2 max-w-lg">
-          {morningResults
-            .filter((r) => r.type === "death" || r.type === "saved")
-            .map((r, i) => (
-              <li
-                key={i}
-                className={
-                  r.type === "death" ? "text-red-400" : "text-green-400"
-                }
-              >
-                {r.text}
-              </li>
-            ))}
-          {morningResults.length === 0 && (
-            <li className="text-gray-400">Ночь прошла спокойно</li>
-          )}
-        </ul>
-        {privateInfo && (
-          <p className="mt-6 text-yellow-300">Инфо: {privateInfo.text}</p>
-        )}
-      </div>
+      <Stage tone="noir">
+        <p className="text-[#c9b48f] animate-pulse">Синхронизация с сервером…</p>
+      </Stage>
     );
-  }
+  })();
 
   return (
-    <div className="fixed inset-0 z-[300] bg-black flex items-center justify-center text-white">
-      <p>Фаза: {phase}</p>
-    </div>
+    <>
+      {screen}
+      {overlay}
+      {phase === "ended" && !isMayor && (
+        <button
+          type="button"
+          onClick={onLeaveToLobby}
+          className="btn btn-ghost btn-sm fixed left-4 top-4 z-[640]"
+        >
+          ← В лобби
+        </button>
+      )}
+    </>
   );
 }

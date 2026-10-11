@@ -1,41 +1,81 @@
-// socialStore.js — сохраняет accountProfiles и friendRequests на диск,
-// чтобы они не терялись при перезапуске сервера (раньше жили только в
-// памяти — рестарт сервера стирал вообще все заявки в друзья и профили,
-// это была одна из причин, почему заявки "терялись").
+// socialStore.js — постоянное хранилище сервера (профили, друзья, заявки,
+// баны, отключённые роли, общая статистика).
 //
-// presence (кто сейчас онлайн) НЕ сохраняется — это состояние по своей
-// природе живёт только пока открыт сокет, восстанавливать его не нужно.
+// Файл лежит в DATA_DIR (по умолчанию server/data). На Railway файловая
+// система контейнера стирается при каждом деплое — чтобы друзья и рейтинг
+// не пропадали, подключите Volume и укажите DATA_DIR=/data (путь монтирования).
+//
+// Запись на диск — отложенная и атомарная (через временный файл), чтобы
+// частые обновления профилей не блокировали сервер и не портили файл.
 
 const fs = require("fs");
 const path = require("path");
 
-const FILE = path.join(__dirname, "data", "social.json");
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
+const FILE = path.join(DATA_DIR, "social.json");
+const SAVE_DELAY_MS = 1500;
 
-function readAll() {
+const EMPTY = () => ({
+  accountProfiles: {},
+  friends: {},
+  friendRequests: {},
+  bans: {},
+  disabledRoles: {},
+  adminTokens: {},
+  stats: { gamesPlayed: 0, roomsCreated: 0 }
+});
+
+let state = null;
+let saveTimer = null;
+
+function load() {
+  if (state) return state;
+  state = EMPTY();
   try {
-    const raw = fs.readFileSync(FILE, "utf8");
-    const data = JSON.parse(raw);
-    return {
-      accountProfiles: data.accountProfiles || {},
-      friendRequests: data.friendRequests || {}, // оставлено для обратной совместимости старых файлов, больше не используется
-      friends: data.friends || {}
-    };
-  } catch {
-    return { accountProfiles: {}, friendRequests: {}, friends: {} };
+    const data = JSON.parse(fs.readFileSync(FILE, "utf8"));
+    for (const key of Object.keys(state)) {
+      if (data[key] && typeof data[key] === "object") {
+        state[key] = { ...state[key], ...data[key] };
+      }
+    }
+    // Старый формат заявок ({ toId: { fromId: {...} } } или массивы) — приводим к массиву
+    for (const [to, list] of Object.entries(state.friendRequests)) {
+      if (!Array.isArray(list)) state.friendRequests[to] = [];
+    }
+  } catch (err) {
+    if (err.code !== "ENOENT") {
+      console.error("⚠️ Не удалось прочитать social.json, начинаем с пустого:", err.message);
+    }
   }
+  return state;
 }
 
-function writeAll(accountProfiles, friendRequests, friends) {
+function flush() {
+  if (!state) return;
   try {
-    fs.mkdirSync(path.dirname(FILE), { recursive: true });
-    fs.writeFileSync(
-      FILE,
-      JSON.stringify({ accountProfiles, friendRequests, friends }, null, 2),
-      "utf8"
-    );
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    const tmp = FILE + ".tmp";
+    fs.writeFileSync(tmp, JSON.stringify(state), "utf8");
+    fs.renameSync(tmp, FILE);
   } catch (err) {
     console.error("⚠️ Не удалось сохранить social.json:", err.message);
   }
 }
 
-module.exports = { readAll, writeAll };
+function save() {
+  if (saveTimer) return;
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    flush();
+  }, SAVE_DELAY_MS);
+}
+
+function flushNow() {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+  flush();
+}
+
+module.exports = { load, save, flushNow, DATA_DIR };

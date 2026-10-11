@@ -1,13 +1,74 @@
+// Порядок ночных ходов. Для каждого шага:
+//  - role: чей ход (ключ в room.nightActions)
+//  - withRoles: кто ещё ходит вместе (мафия выбирает жертву вместе с Крёстным)
+//  - modes: варианты действия (игрок сначала выбирает режим, потом цель)
+//  - selfTarget: можно ли выбрать себя
+//  - hint: подсказка игроку на экране хода
 module.exports = [
-  { role: "doctor", label: "Доктор", teamAction: false },
-  { role: "mafia", label: "Мафия", teamAction: true, withRoles: ["otez"] },
-  { role: "otez", label: "Крёстный отец", teamAction: false, onlyAfterMafia: true },
-  { role: "vor", label: "Вор", teamAction: false },
-  { role: "manyak", label: "Маньяк", teamAction: false },
-  { role: "potroshitel", label: "Потрошитель", teamAction: false },
-  { role: "sherif", label: "Шериф", teamAction: false },
-  { role: "sveshennik", label: "Священник", teamAction: false, modes: ["check", "kill"] },
-  { role: "krasotka", label: "Красотка", teamAction: false },
-  { role: "poklon", label: "Поклонница", teamAction: false },
-  { role: "stukach", label: "Стукач", teamAction: false },
+  {
+    role: "doctor",
+    label: "Доктор",
+    selfTarget: true,
+    hint: "Выберите, кого спасти этой ночью"
+  },
+  {
+    role: "mafia",
+    label: "Мафия",
+    withRoles: ["otez"],
+    teamAction: true,
+    hint: "Семья выбирает жертву. Решает большинство голосов"
+  },
+  {
+    role: "otez",
+    label: "Крёстный отец",
+    hint: "Выберите, кого лишить голоса на дневном голосовании"
+  },
+  {
+    role: "vor",
+    label: "Вор",
+    hint: "Выберите, у кого украсть голос на следующем голосовании"
+  },
+  {
+    role: "manyak",
+    label: "Маньяк",
+    hint: "Выберите жертву"
+  },
+  {
+    role: "potroshitel",
+    label: "Потрошитель",
+    hint: "Выберите жертву. Обывателей вы убить не сможете"
+  },
+  {
+    role: "sherif",
+    label: "Шериф",
+    hint: "Выберите, кого устранить этой ночью"
+  },
+  {
+    role: "sveshennik",
+    label: "Священник",
+    modes: [
+      { id: "check", label: "Проверить" },
+      { id: "kill", label: "Устранить" }
+    ],
+    hint: "Проверьте роль игрока или устраните его"
+  },
+  {
+    role: "krasotka",
+    label: "Красотка",
+    hint: "Кого соблазнить? Если на вас нападут — погибнет он"
+  },
+  {
+    role: "poklon",
+    label: "Поклонница",
+    hint: "За кем следить? Узнаете его роль и куда он ходил ночью"
+  },
+  {
+    role: "stukach",
+    label: "Стукач",
+    modes: [
+      { id: "town", label: "Донести городу" },
+      { id: "mafia", label: "Донести мафии" }
+    ],
+    hint: "Узнайте роль игрока и передайте сведения одной из сторон — вы победите вместе с той стороной, которой помогали"
+  }
 ];

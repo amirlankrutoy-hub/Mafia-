@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /online?
+
+Sitemap: https://mafia-play-n.vercel.app/sitemap.xml

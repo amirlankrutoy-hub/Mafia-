@@ -2,18 +2,12 @@
 // Хранится локально (localStorage). Имена уникальны в рамках устройства-клиента,
 // а также синхронизируются с сервером/Firebase позже при необходимости.
 
-import { setAdminRole } from "./admin";
-import { grantAdminEverything, credit } from "./wallet";
-import { ADMIN_DECORATION, ADMIN_EMOJI } from "../data/shopData";
 
 const ACCOUNT_KEY = "mafia_account_v1"; // мой аккаунт на этом устройстве
 const REGISTRY_KEY = "mafia_names_registry_v1"; // все занятые имена -> { id, isAdmin }
 
-// Специальные имена и их фиксированные ID
-const SPECIAL_ACCOUNTS = {
-  admin: { id: "777777", adminRole: "Admin" },
-  admin2: { id: "111111", adminRole: "admin-setting" }
-};
+// Админ-доступ больше НЕ выдаётся по нику (раньше любой, кто вводил имя
+// "admin", становился администратором) — только по паролю через сервер.
 
 function readRegistry() {
   try {
@@ -92,30 +86,12 @@ export function registerOrLoginByName(rawName) {
     };
   }
 
-  let id;
-  let isAdmin = false;
-  let adminRole = null;
+  const id = generateRandomId(registry);
+  const account = { name, id, createdAt: Date.now() };
 
-  const special = SPECIAL_ACCOUNTS[key];
-  if (special) {
-    id = special.id;
-    isAdmin = true;
-    adminRole = special.adminRole;
-  } else {
-    id = generateRandomId(registry);
-  }
-
-  const account = { name, id, isAdmin, createdAt: Date.now() };
-
-  registry[key] = { id, isAdmin };
+  registry[key] = { id };
   writeRegistry(registry);
   saveMyAccount(account);
-
-  if (isAdmin && adminRole) {
-    setAdminRole(adminRole);
-    grantAdminEverything(ADMIN_DECORATION.id, ADMIN_EMOJI.id);
-    credit(0); // синхронизировать событие кошелька, баланс не трогаем
-  }
 
   return { success: true, account };
 }

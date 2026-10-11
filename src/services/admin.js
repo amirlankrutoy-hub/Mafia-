@@ -1,411 +1,137 @@
-// admin.js — роли: Admin | admin-setting | admin_support
-// Вход ТОЛЬКО по паролю из футера (не по нику).
-
-import { grantAdminEverything, credit, isAdminUnlocked } from "./wallet";
+// admin.js — единая админ-панель. Вход и ВСЕ действия проверяет сервер:
+// пароль больше не хранится в коде сайта (раньше его мог прочитать любой
+// в исходниках страницы), баны и отключение ролей действуют на всех игроков.
+import { socket } from "../socket";
+import { grantAdminEverything } from "./wallet";
 import { ADMIN_DECORATION, ADMIN_EMOJI } from "../data/shopData";
 
-const ROLE_KEY = "mafia_admin_role_v1";
-const ACCOUNT_KEY = "mafia_account_v1"; // тот же ключ, что и в accounts.js/wallet.js
+const TOKEN_KEY = "mafia_admin_token_v2";
+const EVENT = "mafia-admin-changed";
 
-function getCurrentAccountId() {
+function readToken() {
   try {
-    const raw = localStorage.getItem(ACCOUNT_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw)?.id || null;
+    return localStorage.getItem(TOKEN_KEY);
   } catch {
     return null;
   }
 }
 
-// Роль админа привязана к конкретному ID аккаунта — раньше был общий ключ
-// на весь браузер, из-за чего вход под паролем на ОДНОМ аккаунте делал
-// админом сразу ВСЕ аккаунты, когда-либо созданные на этом устройстве.
-function roleKey() {
-  const id = getCurrentAccountId();
-  return id ? `${ROLE_KEY}_${id}` : ROLE_KEY;
-}
-const BANS_KEY = "mafia_bans_v1";
-const STATS_KEY = "mafia_site_stats_v1";
-const ROLE_DISABLE_KEY = "mafia_role_disabled_v1";
-const MAFIA_BOOST_KEY = "mafia_chance_boost_v1";
-
-// Пароли (меняются только здесь)
-const PASSWORDS = {
-  Admin: "121314$admin",
-  "admin-setting": "121314$setting",
-  "admin_$_support": "121314$support"
-};
-
-export const ADMIN_ROLES = {
-  Admin: {
-    id: "Admin",
-    label: "Admin",
-    color: "#3b82f6",
-    canBan: true,
-    canUnban: true,
-    canManageRoles: false,
-    canSeeStats: false,
-    canBoostMafia: true,
-    protected: true
-  },
-  "admin-setting": {
-    id: "admin-setting",
-    label: "admin-setting",
-    color: "#ef4444",
-    canBan: true,
-    canUnban: true,
-    canManageRoles: true,
-    canSeeStats: true,
-    canBoostMafia: true,
-    protected: true
-  },
-  "admin_$_support": {
-    id: "admin_support",
-    label: "admin-support",
-    color: "#22c55e",
-    canBan: true,
-    canUnban: false,
-    canManageRoles: false,
-    canSeeStats: false,
-    canBoostMafia: false,
-    protected: false,
-    grantCoins: 3000,
-    telegram: "@Amir4k_Nurmatov"
-  }
-};
-
-export function getAdminRole() {
+function writeToken(token) {
   try {
-    return localStorage.getItem(roleKey()) || null;
-  } catch {
-    return null;
-  }
+    if (token) localStorage.setItem(TOKEN_KEY, token);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch (_) {}
+  window.dispatchEvent(new CustomEvent(EVENT));
 }
 
-export function getAdminRoleInfo() {
-  const role = getAdminRole();
-  if (!role) return null;
-  return (
-    Object.values(ADMIN_ROLES).find((r) => r.id === role || r.label === role) ||
-    null
-  );
+function call(event, payload) {
+  return new Promise((resolve) => {
+    if (!socket.connected) socket.connect();
+    let done = false;
+    const timer = setTimeout(() => {
+      if (!done) {
+        done = true;
+        resolve({ success: false, message: "Сервер не отвечает" });
+      }
+    }, 8000);
+    const cb = (res) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve(res || { success: false });
+    };
+    if (payload === undefined) socket.emit(event, cb);
+    else socket.emit(event, payload, cb);
+  });
 }
 
-export function isAnyAdmin() {
-  return !!getAdminRole() || isAdminUnlocked();
-}
-
+/** Есть сохранённый вход админа на этом устройстве */
 export function isAdmin() {
-  const role = getAdminRole();
-  return role === "Admin" || role === "admin-setting" || isAdminUnlocked();
+  return !!readToken();
 }
 
-export function isProtectedAdminName(name) {
-  if (!name) return false;
-  const n = String(name).trim().toLowerCase();
-  // защита по роли в сессии, не по нику
-  return false;
+export function onAdminChanged(cb) {
+  window.addEventListener(EVENT, cb);
+  return () => window.removeEventListener(EVENT, cb);
 }
 
-export function setAdminRole(roleId) {
-  if (!roleId) localStorage.removeItem(roleKey());
-  else localStorage.setItem(roleKey(), roleId);
-  window.dispatchEvent(new CustomEvent("mafia-admin-changed"));
+export async function loginAdmin(password) {
+  const res = await call("admin:login", password);
+  if (res.success && res.token) {
+    writeToken(res.token);
+    grantAdminEverything(ADMIN_DECORATION.id, ADMIN_EMOJI.id);
+  }
+  return res;
+}
+
+/** Восстановить сессию админа после переподключения сокета */
+export async function resumeAdmin() {
+  const token = readToken();
+  if (!token) return false;
+  const res = await call("admin:resume", token);
+  if (!res.success) writeToken(null);
+  return !!res.success;
 }
 
 export function logoutAdmin() {
-  setAdminRole(null);
+  const token = readToken();
+  if (token) socket.emit("admin:logout", token);
+  writeToken(null);
 }
 
-/**
- * Вход по паролю из футера.
- * Возвращает { success, message, role? }
- */
-export function tryUnlockAdmin(password) {
-  const pwd = (password || "").trim();
-
-  if (pwd === PASSWORDS.Admin) {
-    setAdminRole("Admin");
-    grantAdminEverything(ADMIN_DECORATION.id, ADMIN_EMOJI.id);
-    return {
-      success: true,
-      role: ADMIN_ROLES.Admin,
-      message: "Вход как Admin"
-    };
+// Обёртка: если сервер забыл сессию (перезапуск) — пробуем восстановить и повторить
+async function adminCall(event, payload) {
+  let res = await call(event, payload);
+  if (!res.success && res.message === "Нет доступа" && (await resumeAdmin())) {
+    res = await call(event, payload);
   }
-
-  if (pwd === PASSWORDS["admin-setting"]) {
-    setAdminRole("admin-setting");
-    grantAdminEverything(ADMIN_DECORATION.id, ADMIN_EMOJI.id);
-    return {
-      success: true,
-      role: ADMIN_ROLES["admin-setting"],
-      message: "Вход как admin-setting"
-    };
-  }
-
-  if (pwd === PASSWORDS["admin_$_support"]) {
-    const alreadySupport = getAdminRole() === "admin_support";
-    setAdminRole("admin_support");
-    if (!alreadySupport) credit(3000);
-    return {
-      success: true,
-      role: ADMIN_ROLES["admin_$_support"],
-      message: alreadySupport
-        ? "Вход как admin-support"
-        : "Вход как admin-support. +3000 Мафио"
-    };
-  }
-
-  return { success: false, message: "Неверный пароль" };
+  return res;
 }
 
-// ---------- Баны (по id игрока в лобби, не по свободному нику) ----------
-function readBans() {
-  try {
-    const raw = localStorage.getItem(BANS_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
-}
+export const adminOverview = () => adminCall("admin:overview");
+export const adminSearch = (query) => adminCall("admin:search", query);
+export const adminPlayer = (accountId) => adminCall("admin:player", accountId);
+export const adminBan = (accountId, duration, reason) => adminCall("admin:ban", { accountId, duration, reason });
+export const adminUnban = (accountId) => adminCall("admin:unban", accountId);
+export const adminBans = () => adminCall("admin:bans");
+export const adminGive = (accountId, amount) => adminCall("admin:give", { accountId, amount });
+export const adminCloseRoom = (code) => adminCall("admin:close-room", code);
+export const adminDisableRole = (roleId, duration) => adminCall("admin:disable-role", { roleId, duration });
+export const adminEnableRole = (roleId) => adminCall("admin:enable-role", roleId);
+export const adminAnnounce = (text) => adminCall("admin:announce", text);
 
-function writeBans(bans) {
-  localStorage.setItem(BANS_KEY, JSON.stringify(bans));
-  window.dispatchEvent(new CustomEvent("mafia-bans-changed"));
-}
+// ---------- Отключённые роли (кэш для галереи/настройки партии) ----------
+let disabledCache = {};
 
-/**
- * Бан игрока из лобби.
- * target: { id, name }
- * duration: '1d' | '30d' | 'permanent'
- */
-export function banLobbyPlayer({ target, duration, reason, bannedBy }) {
-  if (!target?.id || !target?.name) {
-    return { success: false, message: "Игрок не выбран" };
-  }
-  if (!reason?.trim()) {
-    return { success: false, message: "Укажите причину бана" };
-  }
-
-  const myRole = getAdminRole();
-  // support не может банить Admin / admin-setting (по их admin-роли в комнате)
-  if (
-    myRole === "admin_support" &&
-    (target.adminRole === "Admin" || target.adminRole === "admin-setting")
-  ) {
-    const bans = readBans();
-    bans[bannedBy || "self"] = {
-      until: null,
-      reason: "Попытка забанить админа",
-      bannedBy: "system",
-      duration: "permanent",
-      at: Date.now(),
-      name: bannedBy || "admin-support"
-    };
-    writeBans(bans);
-    return {
-      success: false,
-      message:
-        "Невозможно забанить админа. Вы получили бан до разбана администратором."
-    };
-  }
-
-  let until = null;
-  if (duration === "1d") until = Date.now() + 24 * 60 * 60 * 1000;
-  else if (duration === "30d") until = Date.now() + 30 * 24 * 60 * 60 * 1000;
-
-  const bans = readBans();
-  // ключ — имя (для проверки при входе) + id
-  const key = target.name.trim();
-  bans[key] = {
-    until,
-    reason: reason.trim(),
-    bannedBy: bannedBy || myRole || "Admin",
-    duration,
-    at: Date.now(),
-    playerId: target.id,
-    name: target.name
-  };
-  writeBans(bans);
-
-  const text = encodeURIComponent(
-    `🚨 Бан\nИгрок: ${target.name}\nСрок: ${duration}\nПричина: ${reason}\nКем: ${bannedBy || myRole}`
-  );
-  try {
-    window.open(`https://t.me/Amir4k_Nurmatov?text=${text}`, "_blank");
-  } catch (_) {}
-
-  return { success: true, message: `«${target.name}» забанен (${duration})` };
-}
-
-export function unbanPlayer(targetName) {
-  const bans = readBans();
-  if (!bans[targetName]) return { success: false, message: "Игрок не в бане" };
-  delete bans[targetName];
-  writeBans(bans);
-  return { success: true, message: `«${targetName}» разбанен` };
-}
-
-export function getBans() {
-  const bans = readBans();
-  const now = Date.now();
-  let changed = false;
-  for (const [name, info] of Object.entries(bans)) {
-    if (info.until && info.until < now) {
-      delete bans[name];
-      changed = true;
-    }
-  }
-  if (changed) writeBans(bans);
-  return bans;
-}
-
-export function isBanned(name) {
-  if (!name) return false;
-  const bans = getBans();
-  const info = bans[String(name).trim()];
-  if (!info) return false;
-  if (info.until && info.until < Date.now()) {
-    unbanPlayer(name);
-    return false;
-  }
-  return info;
-}
-
-// ---------- Статистика ----------
-export function bumpSiteVisit() {
-  try {
-    const s = JSON.parse(localStorage.getItem(STATS_KEY) || "{}");
-    s.visits = (s.visits || 0) + 1;
-    s.lastVisit = Date.now();
-    localStorage.setItem(STATS_KEY, JSON.stringify(s));
-  } catch (_) {}
-}
-
-export function getSiteStats() {
-  try {
-    const s = JSON.parse(localStorage.getItem(STATS_KEY) || "{}");
-    return {
-      visits: s.visits || 0,
-      activePlayers: s.activePlayers || 0
-    };
-  } catch {
-    return { visits: 0, activePlayers: 0 };
-  }
-}
-
-/** Обновить число игроков в игре (вызывать из OnlinePlay/лобби) */
-export function setActivePlayersCount(n) {
-  try {
-    const s = JSON.parse(localStorage.getItem(STATS_KEY) || "{}");
-    s.activePlayers = Math.max(0, Number(n) || 0);
-    localStorage.setItem(STATS_KEY, JSON.stringify(s));
-    window.dispatchEvent(new CustomEvent("mafia-stats-changed"));
-  } catch (_) {}
-}
-
-// ---------- Отключение ролей (admin-setting) ----------
-// { [roleId]: { until: number|null, duration: '1h'|'1d'|'permanent' } }
-function readDisabledRoles() {
-  try {
-    return JSON.parse(localStorage.getItem(ROLE_DISABLE_KEY) || "{}");
-  } catch {
-    return {};
-  }
-}
-
-function writeDisabledRoles(map) {
-  localStorage.setItem(ROLE_DISABLE_KEY, JSON.stringify(map));
+export function setDisabledRolesCache(map) {
+  disabledCache = map || {};
   window.dispatchEvent(new CustomEvent("mafia-roles-disabled-changed"));
 }
 
-export function disableRole(roleId, duration) {
-  const map = readDisabledRoles();
-  let until = null;
-  if (duration === "1h") until = Date.now() + 60 * 60 * 1000;
-  else if (duration === "1d") until = Date.now() + 24 * 60 * 60 * 1000;
-  // permanent → until = null
-  map[roleId] = { until, duration, at: Date.now() };
-  writeDisabledRoles(map);
-  return { success: true };
-}
-
-export function enableRole(roleId) {
-  const map = readDisabledRoles();
-  delete map[roleId];
-  writeDisabledRoles(map);
-  return { success: true };
-}
-
 export function getDisabledRoles() {
-  const map = readDisabledRoles();
-  const now = Date.now();
-  let changed = false;
-  for (const [id, info] of Object.entries(map)) {
-    if (info.until && info.until < now) {
-      delete map[id];
-      changed = true;
-    }
-  }
-  if (changed) writeDisabledRoles(map);
-  return map;
+  return disabledCache;
 }
 
-/** Роль скрыта / недоступна прямо сейчас? */
 export function isRoleDisabled(roleId) {
-  const info = getDisabledRoles()[roleId];
+  const info = disabledCache[roleId];
   if (!info) return false;
-  if (info.until && info.until < Date.now()) {
-    enableRole(roleId);
-    return false;
-  }
+  if (info.until && info.until < Date.now()) return false;
   return info;
 }
 
-/** Текст для карточки: «откроется …» или «удалена навсегда» */
 export function getRoleDisableLabel(roleId) {
   const info = isRoleDisabled(roleId);
   if (!info) return null;
-  if (!info.until || info.duration === "permanent") {
-    return "Роль удалена навсегда";
-  }
+  if (!info.until) return "Роль отключена";
   return `Откроется: ${new Date(info.until).toLocaleString("ru-RU")}`;
 }
 
-// ---------- Шанс на мафию (Admin + admin-setting) ----------
-// { [playerId or playerName]: weight }  weight > 1 = выше шанс
-function readMafiaBoosts() {
-  try {
-    return JSON.parse(localStorage.getItem(MAFIA_BOOST_KEY) || "{}");
-  } catch {
-    return {};
-  }
+// ---------- Совместимость со старыми вызовами ----------
+export const isAnyAdmin = isAdmin;
+export function getAdminRoleInfo() {
+  return isAdmin() ? { id: "admin", label: "Администратор", color: "#d4af37" } : null;
 }
-
-function writeMafiaBoosts(map) {
-  localStorage.setItem(MAFIA_BOOST_KEY, JSON.stringify(map));
-  window.dispatchEvent(new CustomEvent("mafia-boost-changed"));
-}
-
-export function setMafiaBoost(playerKey, weight = 3) {
-  const map = readMafiaBoosts();
-  map[playerKey] = Math.max(1, Number(weight) || 3);
-  writeMafiaBoosts(map);
-  return { success: true };
-}
-
-export function clearMafiaBoost(playerKey) {
-  const map = readMafiaBoosts();
-  delete map[playerKey];
-  writeMafiaBoosts(map);
-  return { success: true };
-}
-
-export function getMafiaBoosts() {
-  return readMafiaBoosts();
-}
-
-export function getMafiaBoost(playerKey) {
-  return readMafiaBoosts()[playerKey] || 1;
+export function bumpSiteVisit() {}
+export function isBanned() {
+  return false;
 }

@@ -1,6 +1,6 @@
 // achievementsService.js — учёт статистики игрока и разблокировка достижений.
 
-import ACHIEVEMENTS from "../pages/Achievements";
+import ACHIEVEMENTS from "../data/achievements_data";
 import { creditTeni } from "./teniWallet";
 
 const STORAGE_KEY = "mafia_achievements_v1";

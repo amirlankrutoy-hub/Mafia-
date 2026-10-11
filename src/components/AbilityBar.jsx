@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { socket } from "../../socket";
-import ABILITIES from "../../data/abilities";
-import { getOwnedAbilities, consumeAbility } from "../../services/abilitiesShop";
+import { socket } from "../socket";
+import ABILITIES from "../data/abilities";
+import { getOwnedAbilities, consumeAbility } from "../services/abilitiesShop";
+import { toast } from "../services/toast";
 
 /**
  * Плавающая панель способностей — появляется на 10 секунд в начале
@@ -48,19 +49,19 @@ export default function AbilityBar({ phase, roomCode, players = [] }) {
       { roomCode, abilityId: ability.id, targetId },
       (res) => {
         if (!res?.success) {
-          alert(res?.message || "Не удалось использовать способность");
+          toast({ kind: "error", text: res?.message || "Не удалось использовать способность" });
           return;
         }
         consumeAbility(ability.id);
-        if (res.info) alert(res.info);
+        toast({ kind: "success", title: `${ability.name}: активировано`, text: res.info || undefined, duration: res.info ? 12000 : 4000 });
         setPendingTarget(null);
       }
     );
   };
 
   return (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[250] w-[min(92vw,480px)]">
-      <div className="rounded-2xl border-2 border-[#d4af37] bg-[#0d0705]/95 backdrop-blur-md p-3 shadow-[0_0_30px_rgba(212,175,55,0.35)]">
+    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[650] w-[min(92vw,480px)] anim-fade-up">
+      <div className="noir-card p-3 shadow-[0_0_30px_rgba(212,175,55,0.35)]">
         <div className="flex items-center justify-between px-1 mb-2">
           <span className="text-[11px] font-bold uppercase tracking-widest text-[#d4af37]">
             Способности
@@ -96,7 +97,7 @@ export default function AbilityBar({ phase, roomCode, players = [] }) {
                 key={a.id}
                 onClick={() => (a.needsTarget ? setPendingTarget(a) : activate(a))}
                 title={a.description}
-                className="rounded-lg bg-gradient-to-r from-[#8b0000] to-[#5c0000] px-3 py-1.5 text-xs font-bold text-[#f3e5ab] border border-[#d4af37]/60"
+                className="btn btn-blood btn-sm"
               >
                 {a.name} ({owned[a.id]})
               </button>

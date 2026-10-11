@@ -1,146 +1,121 @@
-// presence.js — онлайн-статус и заявки на вход через мэра ("постучаться").
+// presence.js — онлайн-статус, друзья (заявки), приглашения, профиль, рейтинг.
 import { socket } from "../socket";
 
-/** Сообщить серверу, кто я (вызывать после connect и при смене экрана) */
+const ACK_TIMEOUT_MS = 8000;
+
+function ensureConnected() {
+  if (!socket.connected) socket.connect();
+}
+
+// emit с ответом и таймаутом: интерфейс не "зависает", если сервер молчит
+function request(event, payload, fallback) {
+  return new Promise((resolve) => {
+    ensureConnected();
+    let done = false;
+    const timer = setTimeout(() => {
+      if (done) return;
+      done = true;
+      resolve(fallback);
+    }, ACK_TIMEOUT_MS);
+    const cb = (res) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve(res ?? fallback);
+    };
+    if (payload === undefined) socket.emit(event, cb);
+    else socket.emit(event, payload, cb);
+  });
+}
+
+function subscribe(event, callback) {
+  socket.on(event, callback);
+  return () => socket.off(event, callback);
+}
+
+const NO_ANSWER = { success: false, message: "Сервер не отвечает. Попробуйте ещё раз." };
+
+/** Сообщить серверу, кто я. Вызывается на каждое (пере)подключение — см. GlobalEvents */
 export function announcePresence(accountId, name) {
   if (!accountId) return;
-  if (!socket.connected) socket.connect();
+  ensureConnected();
   socket.emit("presence:hello", accountId, name);
 }
 
-/** Подписка на изменения чьего-то статуса { accountId, online, name, roomCode, isMayor } */
-export function onPresenceChanged(callback) {
-  socket.on("presence:changed", callback);
-  return () => socket.off("presence:changed", callback);
-}
+export const onPresenceChanged = (cb) => subscribe("presence:changed", cb);
 
-/** Поиск игрока по ID */
-export function searchByAccountId(id) {
-  return new Promise((resolve) => {
-    if (!socket.connected) socket.connect();
-    socket.emit("presence:search", id, (result) => resolve(result));
-  });
-}
+export const searchByAccountId = (id) => request("presence:search", id, null);
 
-/** Статус сразу нескольких ID (для списков друзей/недавних) */
 export function fetchBulkStatus(ids) {
-  return new Promise((resolve) => {
-    if (!ids?.length) return resolve([]);
-    if (!socket.connected) socket.connect();
-    socket.emit("presence:bulk", ids, (list) => resolve(list || []));
+  if (!ids?.length) return Promise.resolve([]);
+  return request("presence:bulk", ids, []);
+}
+
+export function checkNameAvailable(name, accountId) {
+  return request("account:check-name", { name, accountId }, { available: true });
+}
+
+// ---------- Профиль ----------
+export const getProfile = (accountId) => request("profile:get", accountId, null);
+
+export function updateProfile({ accountId, icon, favoriteRole, name }) {
+  ensureConnected();
+  socket.emit("profile:update", { accountId, icon, favoriteRole, name });
+}
+
+/** Победы теперь засчитывает сервер — оставлено для совместимости */
+export function registerWin() {}
+
+export const onProfileChanged = (cb) => subscribe("profile:changed", cb);
+
+// ---------- Рейтинг ----------
+export const getLeaderboard = () =>
+  request("leaderboard:get", undefined, null).then((res) => {
+    if (!res) return null;
+    // старый сервер возвращал просто массив
+    if (Array.isArray(res)) return { list: res.map((p, i) => ({ ...p, rank: i + 1 })), me: null, total: res.length };
+    return res;
   });
+
+// ---------- Друзья ----------
+export const sendFriendRequest = (toAccountId) =>
+  request("friend:request", { toAccountId }, NO_ANSWER);
+
+export const respondFriendRequest = (fromAccountId, accept) =>
+  request("friend:respond", { fromAccountId, accept }, NO_ANSWER);
+
+export const cancelFriendRequest = (toAccountId) =>
+  request("friend:cancel", { toAccountId }, NO_ANSWER);
+
+export const getFriendRequests = () =>
+  request("friend:requests", undefined, { incoming: [], outgoing: [] });
+
+export const removeFriend = (friendId) => request("friend:remove", { friendId }, NO_ANSWER);
+
+export const getFriendsList = (accountId) => request("friend:get-list", accountId, []);
+
+export const inviteFriend = (toAccountId, roomCode) =>
+  request("friend:invite", { toAccountId, roomCode }, NO_ANSWER);
+
+export const onFriendRequestIncoming = (cb) => subscribe("friend:request-incoming", cb);
+export const onFriendRequests = (cb) => subscribe("friend:requests", cb);
+export const onFriendAccepted = (cb) => subscribe("friend:accepted", cb);
+export const onFriendDeclined = (cb) => subscribe("friend:declined", cb);
+export const onFriendRequestCancelled = (cb) => subscribe("friend:request-cancelled", cb);
+export const onFriendRemoved = (cb) => subscribe("friend:removed", cb);
+export const onFriendInvite = (cb) => subscribe("friend:invite", cb);
+
+// ---------- "Постучаться" в комнату друга ----------
+export const knockOnRoom = ({ roomCode }) => request("friend:knock", { roomCode }, NO_ANSWER);
+
+export const onIncomingFriendRequest = (cb) => subscribe("friend:incoming-request", cb);
+
+export function respondToFriendRequest({ roomCode, requesterSocketId, requesterAccountId, accepted }) {
+  socket.emit("friend:mayor-response", { roomCode, requesterSocketId, requesterAccountId, accepted });
 }
 
-/** Постучаться в комнату мэра-друга */
-export function knockOnRoom({ toAccountId, roomCode, fromAccountId, fromName }) {
-  return new Promise((resolve) => {
-    if (!socket.connected) socket.connect();
-    socket.emit(
-      "friend:knock",
-      { toAccountId, roomCode, fromAccountId, fromName },
-      (result) => resolve(result)
-    );
-  });
-}
+export const onFriendJoinDecision = (cb) => subscribe("friend:join-decision", cb);
 
-/** Мэр: подписка на входящие заявки друзей */
-export function onIncomingFriendRequest(callback) {
-  socket.on("friend:incoming-request", callback);
-  return () => socket.off("friend:incoming-request", callback);
-}
-
-/** Мэр: ответ на заявку */
-export function respondToFriendRequest({ roomCode, requesterSocketId, accepted }) {
-  socket.emit("friend:mayor-response", { roomCode, requesterSocketId, accepted });
-}
-
-/** Проситель: подписка на решение мэра */
-export function onFriendJoinDecision(callback) {
-  socket.on("friend:join-decision", callback);
-  return () => socket.off("friend:join-decision", callback);
-}
-
-// ==========================
-// Публичный профиль (иконка / любимая роль / победы)
-// ==========================
-
-/** Получить публичный профиль игрока по ID */
-export function getProfile(accountId) {
-  return new Promise((resolve) => {
-    if (!socket.connected) socket.connect();
-    socket.emit("profile:get", accountId, (p) => resolve(p));
-  });
-}
-
-/** Обновить свой публичный профиль (видно другим игрокам сразу) */
-export function updateProfile({ accountId, icon, favoriteRole, wins, name }) {
-  if (!socket.connected) socket.connect();
-  socket.emit("profile:update", { accountId, icon, favoriteRole, wins, name });
-}
-
-/** Засчитать себе победу (вызывать один раз в конце игры, если реально играл и победил) */
-export function registerWin(accountId) {
-  if (!accountId) return;
-  if (!socket.connected) socket.connect();
-  socket.emit("profile:register-win", accountId);
-}
-
-/** Топ-200 игроков по числу побед (вкладка "Мир") */
-export function getLeaderboard() {
-  return new Promise((resolve) => {
-    if (!socket.connected) socket.connect();
-    socket.emit("leaderboard:get", (list) => resolve(list || []));
-  });
-}
-
-/** Подписка: чей-то профиль изменился (например, сменил иконку) */
-export function onProfileChanged(callback) {
-  socket.on("profile:changed", callback);
-  return () => socket.off("profile:changed", callback);
-}
-
-// ==========================
-// Друзья — без заявок и подтверждений: добавление сразу мгновенное и
-// взаимное. Список хранится на сервере (переживает смену устройства и
-// перезапуск сервера), поэтому у обоих игроков он появляется сразу.
-// ==========================
-
-/** Добавить в друзья — сразу и взаимно, без подтверждения второй стороны */
-export function addFriendMutual({ toAccountId, fromAccountId, fromName, fromIcon }) {
-  return new Promise((resolve) => {
-    if (!socket.connected) socket.connect();
-    socket.emit(
-      "friend:add",
-      { toAccountId, fromAccountId, fromName, fromIcon },
-      (res) => resolve(res)
-    );
-  });
-}
-
-/** Удалить из друзей — тоже сразу и взаимно */
-export function removeFriendMutual({ myAccountId, friendId }) {
-  return new Promise((resolve) => {
-    if (!socket.connected) socket.connect();
-    socket.emit("friend:remove", { myAccountId, friendId }, (res) => resolve(res));
-  });
-}
-
-/** Мой актуальный список друзей (с сервера — не только с этого устройства) */
-export function getFriendsList(accountId) {
-  return new Promise((resolve) => {
-    if (!socket.connected) socket.connect();
-    socket.emit("friend:get-list", accountId, (list) => resolve(list || []));
-  });
-}
-
-/** Подписка: кто-то добавил меня в друзья прямо сейчас (живое обновление) */
-export function onFriendAdded(callback) {
-  socket.on("friend:added", callback);
-  return () => socket.off("friend:added", callback);
-}
-
-/** Подписка: кто-то удалил меня из друзей */
-export function onFriendRemoved(callback) {
-  socket.on("friend:removed", callback);
-  return () => socket.off("friend:removed", callback);
-}
+// ---------- Отключённые админом роли ----------
+export const getDisabledRolesRemote = () => request("roles:get-disabled", undefined, {});
+export const onDisabledRolesChanged = (cb) => subscribe("roles:disabled", cb);

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import roles from '../data/roles';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -6,6 +6,7 @@ import { faArrowRight } from '@fortawesome/free-solid-svg-icons';
 import { ROLE_PRICES } from '../data/shopData';
 import { ownsRole } from '../services/wallet';
 import { isRoleDisabled } from '../services/admin';
+import useSeo from '../hooks/useSeo';
 
 function getTeamBadgeStyle(category) {
   switch (category) {
@@ -20,11 +21,18 @@ function getTeamBadgeStyle(category) {
 }
 
 const RolesGallery = () => {
+  useSeo({ title: 'Все роли игры Мафия', description: 'Все 12 ролей игры «Мафия» в Mafia Play: Доктор, Шериф, Красотка, Священник, Мафиози, Крёстный отец, Вор, Маньяк, Потрошитель, Поклонница, Стукач, Обыватель — способности и цели.', path: '/roles' });
   const [activeCategory, setActiveCategory] = useState('all');
+  const [, force] = useState(0);
+  useEffect(() => {
+    const refresh = () => force((n) => n + 1);
+    window.addEventListener('mafia-roles-disabled-changed', refresh);
+    return () => window.removeEventListener('mafia-roles-disabled-changed', refresh);
+  }, []);
 
   const filteredRoles = roles.filter((role) => {
     const dis = isRoleDisabled(role.id);
-    if (dis && (!dis.until || dis.duration === 'permanent')) return false;
+    if (dis && !dis.until) return false;
     if (activeCategory === 'all') return true;
     return role.category === activeCategory;
   });
@@ -32,9 +40,10 @@ const RolesGallery = () => {
   return (
     <div className="space-y-6 py-6">
       <div className="text-center space-y-4">
-        <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-wider text-[#d4af37]">
-          Персонажи и Карты
-        </h2>
+        <p className="eyebrow anim-fade-up">Картотека семьи</p>
+        <h1 className="font-display text-4xl sm:text-5xl font-black gold-text anim-blur-in">
+          Персонажи и карты
+        </h1>
 
         <div className="flex flex-wrap justify-center gap-2 sm:gap-3 pt-2">
           <button

@@ -1,193 +1,182 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import roles from "../data/roles";
 import { ROLE_PRICES } from "../data/shopData";
 import { ownsRole } from "../services/wallet";
+import { isRoleDisabled } from "../services/admin";
 import { useLanguage } from "../context/LanguageContext";
 
-export default function PartySetup({
-    players,
-    onStart
-}) {
-    const { t } = useLanguage();
+const GROUPS = [
+  { id: "civilians", label: "Мирные жители", accent: "text-emerald-300" },
+  { id: "mafia", label: "Мафия", accent: "text-red-400" },
+  { id: "neutrals", label: "Нейтралы", accent: "text-[#f3d27a]" }
+];
 
-    const [selectedRoles, setSelectedRoles] = useState({});
-    const [abilitiesEnabled, setAbilitiesEnabled] = useState(true);
-    const [difficulty, setDifficulty] = useState("easy");
+export default function PartySetup({ players, onStart, onClose }) {
+  const { t } = useLanguage();
+  const [selectedRoles, setSelectedRoles] = useState({});
+  const [abilitiesEnabled, setAbilitiesEnabled] = useState(true);
+  const [difficulty, setDifficulty] = useState("easy");
+  const [, force] = useState(0);
 
-    const totalSelected = useMemo(() => {
+  useEffect(() => {
+    const refresh = () => force((n) => n + 1);
+    window.addEventListener("mafia-roles-disabled-changed", refresh);
+    return () => window.removeEventListener("mafia-roles-disabled-changed", refresh);
+  }, []);
 
-        return Object.values(selectedRoles).reduce(
-            (sum, value) => sum + value,
-            0
-        );
+  const total = useMemo(() => Object.values(selectedRoles).reduce((s, v) => s + v, 0), [selectedRoles]);
+  const need = players.length;
+  const mafiaCount = ["mafia", "otez", "vor"].reduce((s, r) => s + (selectedRoles[r] || 0), 0);
 
-    }, [selectedRoles]);
+  const change = (id, d) =>
+    setSelectedRoles((prev) => ({ ...prev, [id]: Math.max(0, Math.min(need, (prev[id] || 0) + d)) }));
 
-    function increase(roleId) {
+  const autoFill = () => {
+    // Быстрый расклад: ~1 мафия на 3–4 игрока, остальные — активные мирные и обыватели
+    const avail = (id) => ownsRole(id) && !isRoleDisabled(id);
+    const next = {};
+    let left = need;
+    const add = (id, n = 1) => {
+      if (!avail(id) || left <= 0) return;
+      const k = Math.min(n, left);
+      next[id] = (next[id] || 0) + k;
+      left -= k;
+    };
+    const mafia = Math.max(1, Math.round(need / 3.5));
+    if (need >= 5) add("otez");
+    add("mafia", mafia - (next.otez || 0));
+    add("doctor");
+    add("sherif");
+    if (need >= 6) add("krasotka");
+    if (need >= 7) add("manyak");
+    if (need >= 8) add("sveshennik");
+    add("obivatel", left);
+    setSelectedRoles(next);
+  };
 
-        setSelectedRoles(prev => ({
-            ...prev,
-            [roleId]: (prev[roleId] || 0) + 1
-        }));
+  const ready = total === need && need > 0;
+  const warn = need >= 3 && ready && mafiaCount === 0 ? "В партии нет мафии — мирным будет скучно" : null;
 
-    }
-
-    function decrease(roleId) {
-
-        setSelectedRoles(prev => ({
-
-            ...prev,
-
-            [roleId]: Math.max(
-                0,
-                (prev[roleId] || 0) - 1
-            )
-
-        }));
-
-    }
-
-    return (
-  <div className="fixed inset-0 z-[200] bg-black overflow-y-auto">
-    <div className="max-w-7xl mx-auto p-10 text-white">
-
-      <h1 className="text-5xl font-black text-center text-yellow-400">
-        ⚙ Настройка партии
-      </h1>
-
-      <div className="mt-10 flex justify-between text-2xl">
-        <div>
-          Игроков:
-          <span className="text-yellow-400 ml-2">{players.length}</span>
-        </div>
-        <br />
-        <div>
-          Выбрано ролей:
-          <span
-            className={`ml-2 font-bold ${
-              totalSelected === players.length
-                ? "text-green-400"
-                : "text-red-400"
-            }`}
-          >
-            {totalSelected}/{players.length}
-          </span>
-        </div>
-      </div>
-
-      {/* сетка ролей — как была */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-8 mt-12">
-        {roles.map(role => {
-          const owned = ownsRole(role.id);
-          return (
-          <div
-            key={role.id}
-            className="relative rounded-2xl overflow-hidden border border-yellow-500 bg-[#111]"
-          >
-            <img
-              src={role.image}
-              alt={role.name}
-              className={`w-full h-80 object-cover ${owned ? "" : "opacity-30 grayscale"}`}
-            />
-            {!owned && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/40">
-                <span className="text-6xl drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]">🔒</span>
-                <span className="rounded-md bg-black/70 border border-yellow-500/60 px-3 py-1 text-sm font-bold text-yellow-400">
-                  {ROLE_PRICES[role.id] ?? 0}{" "}<img src="/tokens.png" alt="" className="inline h-4 w-4 object-contain align-[-2px]" /> — купить в магазине
-                </span>
-              </div>
-            )}
-            <div className="p-4">
-              <h2 className="text-2xl font-bold">{role.name}</h2>
-              <p className="text-gray-300 mt-2 text-sm">{role.team}</p>
-
-              <div className="flex justify-between items-center mt-6">
-                <button
-                  type="button"
-                  onClick={() => decrease(role.id)}
-                  disabled={!owned}
-                  className="w-12 h-12 rounded-full bg-red-700 text-2xl disabled:opacity-30 disabled:cursor-not-allowed"
-                >
-                  −
-                </button>
-                <span className="text-3xl font-bold">
-                  {selectedRoles[role.id] || 0}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => increase(role.id)}
-                  disabled={!owned}
-                  className="w-12 h-12 rounded-full bg-green-700 text-2xl disabled:opacity-30 disabled:cursor-not-allowed"
-                >
-                  +
-                </button>
-              </div>
-            </div>
+  return (
+    <div className="fixed inset-0 z-[500] overflow-y-auto bg-[#070403]/97 backdrop-blur-md anim-fade-in">
+      <div className="mx-auto max-w-6xl px-4 pb-40 pt-8 sm:px-8">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="eyebrow">Только для мэра</p>
+            <h1 className="mt-1 font-display text-4xl font-black gold-text sm:text-5xl">Настройка партии</h1>
           </div>
+          <div className="flex gap-2">
+            <button type="button" onClick={autoFill} className="btn btn-ghost btn-sm">✨ Авто-расклад</button>
+            {onClose && (
+              <button type="button" onClick={onClose} className="btn btn-ghost btn-sm">Назад</button>
+            )}
+          </div>
+        </div>
+
+        {GROUPS.map((g) => {
+          const list = roles.filter((r) => r.category === g.id && !isRoleDisabled(r.id));
+          if (!list.length) return null;
+          return (
+            <section key={g.id} className="mt-8">
+              <h2 className={`eyebrow !tracking-[0.25em] ${g.accent}`}>{g.label}</h2>
+              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                {list.map((role, i) => {
+                  const owned = ownsRole(role.id);
+                  const count = selectedRoles[role.id] || 0;
+                  return (
+                    <div
+                      key={role.id}
+                      className={`group relative overflow-hidden rounded-2xl ring-1 transition anim-scale-in ${
+                        count ? "ring-2 ring-[#f3d27a] shadow-[0_0_30px_-8px_rgba(212,175,55,0.7)]" : "ring-[#d4af37]/20"
+                      }`}
+                      style={{ "--i": i }}
+                    >
+                      <img
+                        src={role.image}
+                        alt={role.name}
+                        className={`h-44 w-full object-cover transition duration-700 group-hover:scale-105 sm:h-52 ${owned ? "" : "grayscale opacity-40"}`}
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent" />
+                      {count > 0 && (
+                        <span key={count} className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-[#d4af37] font-black text-black anim-pop">
+                          {count}
+                        </span>
+                      )}
+                      <div className="absolute inset-x-0 bottom-0 p-3">
+                        <div className="font-display text-lg font-bold text-[#f3e5ab]">{role.name}</div>
+                        {owned ? (
+                          <div className="mt-2 flex items-center justify-between">
+                            <button type="button" onClick={() => change(role.id, -1)} disabled={!count} className="btn btn-ghost btn-icon !h-9 !w-9 !text-lg">−</button>
+                            <span className="font-display text-2xl font-black text-[#f3d27a]">{count}</span>
+                            <button type="button" onClick={() => change(role.id, 1)} disabled={total >= need} className="btn btn-gold btn-icon !h-9 !w-9 !text-lg">+</button>
+                          </div>
+                        ) : (
+                          <div className="mt-2 text-[11px] font-bold text-[#f3d27a]">
+                            🔒 {ROLE_PRICES[role.id] ?? 0} Токенов — в магазине
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
           );
         })}
+
+        <section className="mt-10 grid gap-4 md:grid-cols-2">
+          <div className="noir-card noir-card--flat p-5">
+            <p className="eyebrow">{t("difficulty")}</p>
+            <div className="tabs mt-3">
+              <button type="button" className="tab" aria-selected={difficulty === "easy"} onClick={() => setDifficulty("easy")}>
+                {t("difficulty_easy")}
+              </button>
+              <button type="button" className="tab" aria-selected={difficulty === "hard"} onClick={() => setDifficulty("hard")}>
+                {t("difficulty_hard")}
+              </button>
+            </div>
+            <p className="mt-3 text-xs text-[#a8916c]">
+              {difficulty === "easy" ? t("difficulty_easy_desc") : t("difficulty_hard_desc")}
+            </p>
+          </div>
+          <label className="noir-card noir-card--flat flex cursor-pointer items-center justify-between gap-4 p-5">
+            <div>
+              <p className="eyebrow">Способности</p>
+              <p className="mt-2 text-sm text-[#e6d5bc]">{t("abilities_enabled")}</p>
+            </div>
+            <input
+              type="checkbox"
+              checked={abilitiesEnabled}
+              onChange={(e) => setAbilitiesEnabled(e.target.checked)}
+              className="h-6 w-6 accent-[#d4af37]"
+            />
+          </label>
+        </section>
       </div>
 
-      <div className="flex flex-col items-center gap-4 mt-16 pb-10">
-        <div className="flex flex-col items-center gap-2 bg-zinc-900/80 border border-yellow-700/40 rounded-xl px-5 py-4">
-          <span className="text-sm font-bold text-gray-200 uppercase tracking-wider">
-            {t("difficulty")}
-          </span>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setDifficulty("easy")}
-              className={`px-6 py-2 rounded-lg text-sm font-bold uppercase tracking-wider transition ${
-                difficulty === "easy"
-                  ? "bg-yellow-500 text-black"
-                  : "bg-zinc-800 text-gray-300 border border-yellow-700/30"
-              }`}
-            >
-              {t("difficulty_easy")}
-            </button>
-            <button
-              type="button"
-              onClick={() => setDifficulty("hard")}
-              className={`px-6 py-2 rounded-lg text-sm font-bold uppercase tracking-wider transition ${
-                difficulty === "hard"
-                  ? "bg-red-700 text-white"
-                  : "bg-zinc-800 text-gray-300 border border-yellow-700/30"
-              }`}
-            >
-              {t("difficulty_hard")}
-            </button>
+      {/* Панель старта */}
+      <div className="fixed inset-x-0 bottom-0 z-10 border-t border-[#d4af37]/20 bg-[#0a0605]/95 backdrop-blur-xl safe-area-pb">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-8">
+          <div>
+            <div className="text-sm text-[#a8916c]">
+              Ролей выбрано{" "}
+              <span className={`font-display text-2xl font-black ${ready ? "text-emerald-400" : total > need ? "text-red-400" : "text-[#f3d27a]"}`}>
+                {total}/{need}
+              </span>
+            </div>
+            {warn && <div className="text-xs text-amber-300">{warn}</div>}
+            {!ready && <div className="text-xs text-[#a8916c]">Число ролей должно совпадать с числом игроков</div>}
           </div>
-          <p className="max-w-md text-center text-xs text-gray-400 mt-1">
-            {difficulty === "easy" ? t("difficulty_easy_desc") : t("difficulty_hard_desc")}
-          </p>
+          <button
+            type="button"
+            onClick={() => onStart(selectedRoles, abilitiesEnabled, difficulty)}
+            disabled={!ready}
+            className={`btn btn-blood btn-lg ${ready ? "btn-pulse" : ""}`}
+          >
+            ▶ Начать игру
+          </button>
         </div>
-
-        <label className="flex items-center gap-3 bg-zinc-900/80 border border-yellow-700/40 rounded-xl px-5 py-3 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={abilitiesEnabled}
-            onChange={(e) => setAbilitiesEnabled(e.target.checked)}
-            className="w-5 h-5 accent-yellow-500"
-          />
-          <span className="text-sm font-bold text-gray-200">
-            {t("abilities_enabled")}
-          </span>
-        </label>
-
-        <button
-          type="button"
-          onClick={() => onStart(selectedRoles, abilitiesEnabled, difficulty)}
-          disabled={totalSelected !== players.length}
-          className={`px-12 py-5 rounded-xl text-2xl font-bold transition ${
-            totalSelected === players.length
-              ? "bg-red-700 hover:bg-red-800"
-              : "bg-gray-700 cursor-not-allowed"
-          }`}
-        >
-          ▶ Начать игру
-        </button>
       </div>
     </div>
-  </div>
-);
+  );
 }

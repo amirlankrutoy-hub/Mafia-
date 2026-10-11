@@ -4,8 +4,10 @@ import { faLock, faCrown } from '@fortawesome/free-solid-svg-icons';
 
 import { ACHIEVEMENTS } from '../data/achievements_data';
 import { getUnlockedIds, getProgress } from '../services/achievementsService';
+import useSeo from '../hooks/useSeo';
 
 const Achievements = () => {
+  useSeo({ title: 'Достижения', description: 'Достижения игроков Mafia Play.', path: '/achievements' });
   const [unlocked, setUnlocked] = useState(getUnlockedIds());
 
   useEffect(() => {

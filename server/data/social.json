@@ -1,17 +1,1 @@
-{
-  "accountProfiles": {
-    "777777": {
-      "name": "admin",
-      "icon": "/avatars/avatar17.svg",
-      "favoriteRole": "vor",
-      "wins": 0
-    },
-    "874513": {
-      "name": "=",
-      "icon": "/avatars/avatar1.svg",
-      "favoriteRole": null,
-      "wins": 0
-    }
-  },
-  "friendRequests": {}
-}
+{"accountProfiles":{"777777":{"name":"admin","icon":"/avatars/avatar15.svg","favoriteRole":"vor","wins":0,"lastSeen":1791737817867},"874513":{"name":"=","icon":"/avatars/avatar1.svg","favoriteRole":null,"wins":0}},"friends":{},"friendRequests":{},"bans":{},"disabledRoles":{},"adminTokens":{},"stats":{"gamesPlayed":0,"roomsCreated":1}}

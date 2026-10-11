@@ -11,8 +11,10 @@ import {
 } from '../services/profile';
 import { updateProfile } from '../services/presence';
 import { getStats } from '../services/achievementsService';
+import useSeo from '../hooks/useSeo';
 
 export default function ProfilePage({ account }) {
+  useSeo({ title: 'Мой профиль', description: 'Профиль игрока Mafia Play.', path: '/profile' });
   const [avatar, setAvatar] = useState(getSelectedAvatar());
   const [favRole, setFavRole] = useState(getFavoriteRole());
   const [saved, setSaved] = useState(false);

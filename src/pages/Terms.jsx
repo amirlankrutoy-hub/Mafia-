@@ -1,6 +1,8 @@
 import { Link } from "react-router-dom";
+import useSeo from '../hooks/useSeo';
 
 export default function Terms() {
+  useSeo({ title: 'Пользовательское соглашение', description: 'Пользовательское соглашение Mafia Play.', path: '/terms' });
   return (
     <div className="min-h-screen bg-[#0a0908] text-[#e8e0d5] px-4 py-10 md:py-14">
       <div className="max-w-3xl mx-auto">

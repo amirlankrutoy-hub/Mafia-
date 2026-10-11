@@ -1,11 +1,18 @@
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import roles from '../data/roles.js';
+import useSeo from '../hooks/useSeo';
 
 function RoleDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
 
   const role = roles.find((r) => r.id === id);
+  useSeo({
+    title: role ? `${role.name} — роль в игре Мафия` : 'Роль не найдена',
+    description: role ? `${role.name} (${role.team}) в Mafia Play: ${role.description} Способность: ${role.ability}` : undefined,
+    path: `/role/${id}`,
+    noindex: !role
+  });
 
   if (!role) {
     return (

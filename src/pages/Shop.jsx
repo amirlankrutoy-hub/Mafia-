@@ -20,6 +20,7 @@ import DecorationSVG from "../components/shop/DecorationSVG";
 import ABILITIES from "../data/abilities";
 import { getOwnedAbilities, buyAbility } from "../services/abilitiesShop";
 import { getTeniBalance } from "../services/teniWallet";
+import useSeo from '../hooks/useSeo';
 
 const TABS = [
   { id: "roles", label: "Роли" },
@@ -30,6 +31,7 @@ const TABS = [
 ];
 
 export default function Shop() {
+  useSeo({ title: 'Магазин', description: 'Роли, эмодзи, украшения и способности для игры Mafia Play.', path: '/shop' });
   const [tab, setTab] = useState("roles");
   const [wallet, setWallet] = useState(getWallet());
   const [promoInput, setPromoInput] = useState("");

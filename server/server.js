@@ -1,137 +1,409 @@
-console.log("🔥 МОЙ SERVER.JS ЗАПУЩЕН");
-
 const express = require("express");
 const http = require("http");
+const crypto = require("crypto");
 const { Server } = require("socket.io");
 const cors = require("cors");
 
 const RoomManager = require("./managers/RoomManager");
-const GameManager = require("./managers/GameManager");
-const RoleManager = require("./managers/RoleManager");
-const NightManager = require("./managers/NightManager");
 const GameFlowManager = require("./managers/GameFlowManager");
-const socialStore = require("./socialStore");
+const NIGHT_ORDER = require("./managers/NightOrder");
+const store = require("./socialStore");
+
+// ==========================
+// Настройки (переменные окружения Railway)
+// ==========================
+// CORS_ORIGINS — список адресов сайта через запятую. Не задан — разрешены все
+// (иначе при смене домена/превью-деплое сокеты молча перестают подключаться).
+const CORS_ORIGINS = (process.env.CORS_ORIGINS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "121314$admin";
+if (!process.env.ADMIN_PASSWORD) {
+    console.warn("⚠️ ADMIN_PASSWORD не задан — используется пароль по умолчанию. Задайте его в переменных Railway.");
+}
+
+const ADMIN_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const MAYOR_RECONNECT_GRACE_MS = 30000;
+const LOBBY_RECONNECT_GRACE_MS = 20000;
+const ABILITY_WINDOW_MS = 10000;
+const MAX_FRIENDS = 200;
+
+const db = store.load();
 
 const app = express();
-
-app.use(cors());
-app.use(express.json());
+app.use(cors({ origin: CORS_ORIGINS.length ? CORS_ORIGINS : true }));
+app.use(express.json({ limit: "20kb" }));
 
 const server = http.createServer(app);
-
 const io = new Server(server, {
     cors: {
-        origin: [
-            "http://localhost:5173",
-            "https://mafia-tau-sand.vercel.app",
-            "https://mafia-play-n.vercel.app"
-        ],
+        origin: CORS_ORIGINS.length ? CORS_ORIGINS : true,
         methods: ["GET", "POST"],
         credentials: true
-    }
+    },
+    maxHttpBufferSize: 1e5,
+    pingInterval: 20000,
+    pingTimeout: 25000
 });
+
+const startedAt = Date.now();
 
 app.get("/", (req, res) => {
     res.send("Mafia Play Server работает!");
 });
 
-// roomCode -> таймер "мэр отключился, ждём реконнекта после F5"
-const mayorGraceTimers = {};
-const MAYOR_RECONNECT_GRACE_MS = 15000;
+app.get("/health", (req, res) => {
+    res.json({
+        ok: true,
+        uptimeSec: Math.round((Date.now() - startedAt) / 1000),
+        rooms: RoomManager.getAllRooms().length,
+        online: onlineCount()
+    });
+});
+
+// Публичная статистика для главной страницы
+app.get("/stats", (req, res) => {
+    res.json({
+        online: onlineCount(),
+        rooms: RoomManager.getAllRooms().length,
+        players: Object.keys(db.accountProfiles).length,
+        gamesPlayed: db.stats.gamesPlayed || 0
+    });
+});
 
 // ==========================
-// Presence (для друзей): accountId -> { socketId, name, roomCode, isMayor }
+// Утилиты
 // ==========================
-const presence = {};
+const isAccountId = (id) => typeof id === "string" && /^\d{4,10}$/.test(id);
+const cleanName = (name) =>
+    String(name || "")
+        .replace(/[\u0000-\u001f<>]/g, "")
+        .trim()
+        .slice(0, 24);
+const cleanText = (text, max = 200) =>
+    String(text || "")
+        .replace(/[\u0000-\u001f]/g, " ")
+        .trim()
+        .slice(0, max);
+const cleanIcon = (icon) => {
+    const s = String(icon || "");
+    return /^\/[\w\-./]{1,80}$/.test(s) ? s : null;
+};
 
-function broadcastPresence(accountId) {
-    const p = presence[accountId];
-    io.emit("presence:changed", {
-        accountId,
-        online: !!p,
-        name: p?.name || null,
-        roomCode: p?.roomCode || null,
-        isMayor: !!p?.isMayor
+// Обёртка над socket.on: ошибка в одном обработчике больше не роняет весь
+// сервер (раньше любое исключение завершало процесс и выкидывало всех).
+function on(socket, event, handler) {
+    socket.on(event, (...raw) => {
+        // null -> undefined, чтобы срабатывали значения по умолчанию в аргументах
+        const args = raw.map((a) => (a === null ? undefined : a));
+        try {
+            handler(...args);
+        } catch (err) {
+            console.error(`⚠️ Ошибка в обработчике "${event}":`, err);
+            const cb = args[args.length - 1];
+            if (typeof cb === "function") {
+                try {
+                    cb({ success: false, message: "Ошибка сервера. Попробуйте ещё раз." });
+                } catch (_) {}
+            }
+        }
     });
 }
 
-function presenceStatus(accountId) {
-    const p = presence[accountId];
-    const prof = accountProfiles[accountId] || {};
-    if (!p) {
-        return {
-            id: accountId,
-            online: false,
-            name: prof.name || null,
-            icon: prof.icon || null,
-            favoriteRole: prof.favoriteRole || null,
-            wins: typeof prof.wins === "number" ? prof.wins : 0
+function ack(cb) {
+    return typeof cb === "function" ? cb : () => {};
+}
+
+// ==========================
+// Профили
+// ==========================
+function profileOf(id) {
+    return db.accountProfiles[id] || null;
+}
+
+function ensureProfile(id, name) {
+    if (!db.accountProfiles[id]) {
+        db.accountProfiles[id] = {
+            name: name || `Игрок #${id}`,
+            icon: null,
+            favoriteRole: null,
+            wins: 0,
+            games: 0,
+            mvp: 0,
+            createdAt: Date.now()
         };
     }
-    return {
-        id: accountId,
-        online: true,
-        name: p.name,
-        roomCode: p.roomCode || null,
-        isMayor: !!p.isMayor,
-        icon: prof.icon || null,
-        favoriteRole: prof.favoriteRole || null,
-        wins: typeof prof.wins === "number" ? prof.wins : 0
-    };
+    return db.accountProfiles[id];
 }
 
-// ==========================
-// Публичные профили: иконка, любимая роль, победы — видно другим игрокам.
-// Сохраняются на диск (server/data/social.json), переживают перезапуск.
-// ==========================
-const accountProfiles = socialStore.readAll().accountProfiles; // accountId -> { name, icon, favoriteRole, wins }
-
-function publicProfile(accountId) {
-    const prof = accountProfiles[accountId] || {};
-    const online = presence[accountId];
-    return {
-        id: accountId,
-        name: (online && online.name) || prof.name || null,
-        icon: prof.icon || null,
-        favoriteRole: prof.favoriteRole || null,
-        wins: typeof prof.wins === "number" ? prof.wins : 0
-    };
-}
-
-// ==========================
-// Друзья — без заявок: добавление сразу и взаимно. Хранятся на диске
-// (server/data/social.json), переживают перезапуск сервера.
-// ==========================
-const friendRequests = socialStore.readAll().friendRequests; // оставлено для обратной совместимости, больше не используется
-const friendsList = socialStore.readAll().friends || {}; // accountId -> [friendId, ...]
-
-// Сохраняет всё хранилище на диск — вызывается после любого изменения
-function saveSocial() {
-    socialStore.writeAll(accountProfiles, friendRequests, friendsList);
-}
-
-function addMutualFriend(accountId, friendId) {
-    if (!friendsList[accountId]) friendsList[accountId] = [];
-    if (!friendsList[accountId].includes(friendId)) {
-        friendsList[accountId].push(friendId);
+function nameTakenBy(name) {
+    const key = cleanName(name).toLowerCase();
+    if (!key) return null;
+    for (const [id, prof] of Object.entries(db.accountProfiles)) {
+        if ((prof.name || "").toLowerCase() === key) return id;
     }
+    return null;
 }
 
-function friendProfile(id) {
-    const prof = accountProfiles[id] || {};
+// ==========================
+// Присутствие (онлайн-статус)
+// accountId -> { sockets: Set, name, roomCode, isMayor }
+// ==========================
+const presence = {};
+
+function onlineCount() {
+    return Object.values(presence).filter((p) => p.sockets.size > 0).length;
+}
+
+function isOnline(id) {
+    return !!presence[id] && presence[id].sockets.size > 0;
+}
+
+function emitToAccount(id, event, data) {
+    io.to(`acc:${id}`).emit(event, data);
+}
+
+function presenceStatus(id) {
+    const prof = profileOf(id) || {};
+    const p = presence[id];
+    const online = isOnline(id);
     return {
         id,
-        name: prof.name || `Игрок #${id}`,
+        known: !!profileOf(id),
+        online,
+        name: (online && p.name) || prof.name || null,
         icon: prof.icon || null,
-        wins: typeof prof.wins === "number" ? prof.wins : 0,
-        online: !!presence[id]
+        favoriteRole: prof.favoriteRole || null,
+        wins: prof.wins || 0,
+        games: prof.games || 0,
+        mvp: prof.mvp || 0,
+        roomCode: online ? p.roomCode || null : null,
+        isMayor: online ? !!p.isMayor : false
+    };
+}
+
+function notifyFriendsAboutMe(id) {
+    const status = presenceStatus(id);
+    (db.friends[id] || []).forEach((fid) => emitToAccount(fid, "presence:changed", status));
+}
+
+function setPresenceRoom(accountId, roomCode, isMayor) {
+    if (!accountId || !presence[accountId]) return;
+    presence[accountId].roomCode = roomCode || null;
+    presence[accountId].isMayor = !!(roomCode && isMayor);
+    notifyFriendsAboutMe(accountId);
+}
+
+// ==========================
+// Баны (на сервере, по ID аккаунта)
+// ==========================
+function activeBan(accountId) {
+    const ban = accountId && db.bans[accountId];
+    if (!ban) return null;
+    if (ban.until && ban.until < Date.now()) {
+        delete db.bans[accountId];
+        store.save();
+        return null;
+    }
+    return ban;
+}
+
+function banMessage(ban) {
+    const until = ban.until ? new Date(ban.until).toLocaleString("ru-RU", { timeZone: "Asia/Tashkent" }) : "навсегда";
+    return `Вы заблокированы. Причина: ${ban.reason}. Срок: ${until}`;
+}
+
+// ==========================
+// Отключённые роли (управляет админ)
+// ==========================
+function disabledRoles() {
+    const now = Date.now();
+    let changed = false;
+    for (const [id, info] of Object.entries(db.disabledRoles)) {
+        if (info.until && info.until < now) {
+            delete db.disabledRoles[id];
+            changed = true;
+        }
+    }
+    if (changed) store.save();
+    return db.disabledRoles;
+}
+
+// ==========================
+// Друзья: заявки -> подтверждение -> взаимная дружба
+// friendRequests: toId -> [{ from, at }]
+// ==========================
+function friendCard(id) {
+    const s = presenceStatus(id);
+    return {
+        id,
+        name: s.name || `Игрок #${id}`,
+        icon: s.icon,
+        wins: s.wins,
+        games: s.games,
+        online: s.online,
+        roomCode: s.roomCode,
+        isMayor: s.isMayor
+    };
+}
+
+function areFriends(a, b) {
+    return (db.friends[a] || []).includes(b);
+}
+
+function makeFriends(a, b) {
+    for (const [x, y] of [[a, b], [b, a]]) {
+        if (!db.friends[x]) db.friends[x] = [];
+        if (!db.friends[x].includes(y)) db.friends[x].push(y);
+    }
+    dropRequest(a, b);
+    dropRequest(b, a);
+    store.save();
+}
+
+function dropRequest(from, to) {
+    const list = db.friendRequests[to];
+    if (!list) return;
+    db.friendRequests[to] = list.filter((r) => r.from !== from);
+    if (!db.friendRequests[to].length) delete db.friendRequests[to];
+}
+
+function hasRequest(from, to) {
+    return (db.friendRequests[to] || []).some((r) => r.from === from);
+}
+
+function requestsFor(id) {
+    const incoming = (db.friendRequests[id] || []).map((r) => ({ ...friendCard(r.from), at: r.at }));
+    const outgoing = [];
+    for (const [to, list] of Object.entries(db.friendRequests)) {
+        const r = list.find((x) => x.from === id);
+        if (r) outgoing.push({ ...friendCard(to), at: r.at });
+    }
+    return { incoming, outgoing };
+}
+
+// ==========================
+// Админ
+// ==========================
+const loginAttempts = new Map(); // ip -> [timestamps]
+
+function clientIp(socket) {
+    const fwd = socket.handshake.headers["x-forwarded-for"];
+    return (fwd ? String(fwd).split(",")[0] : socket.handshake.address || "").trim();
+}
+
+function tooManyAttempts(ip) {
+    const now = Date.now();
+    const list = (loginAttempts.get(ip) || []).filter((t) => now - t < 10 * 60 * 1000);
+    loginAttempts.set(ip, list);
+    return list.length >= 8;
+}
+
+function issueAdminToken() {
+    const token = crypto.randomBytes(24).toString("hex");
+    db.adminTokens[token] = { createdAt: Date.now(), expiresAt: Date.now() + ADMIN_TOKEN_TTL_MS };
+    store.save();
+    return token;
+}
+
+function validAdminToken(token) {
+    const t = typeof token === "string" && db.adminTokens[token];
+    if (!t) return false;
+    if (t.expiresAt < Date.now()) {
+        delete db.adminTokens[token];
+        store.save();
+        return false;
+    }
+    return true;
+}
+
+function passwordMatches(input) {
+    const a = Buffer.from(String(input || ""));
+    const b = Buffer.from(ADMIN_PASSWORD);
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+function roomSummary(room) {
+    return {
+        code: room.code,
+        phase: room.phase,
+        started: !!room.started,
+        night: room.night || 0,
+        createdAt: room.createdAt,
+        mayor: { name: room.mayor.name, accountId: room.mayor.accountId || null, connected: room.mayor.connected !== false },
+        players: room.players.map((p) => ({
+            name: p.name,
+            accountId: p.accountId || null,
+            alive: p.alive !== false,
+            connected: p.connected !== false
+        }))
     };
 }
 
 // ==========================
-// Способности (покупаются за тени, используются в игре)
+// Комнаты: что видят игроки
 // ==========================
-const ABILITY_WINDOW_MS = 10000;
+function lobbyPlayers(room) {
+    return room.players.map((p) => ({
+        id: p.id,
+        accountId: p.accountId || null,
+        name: p.name,
+        avatar: p.avatar,
+        ready: !!p.ready,
+        decoration: p.decoration || null,
+        connected: p.connected !== false
+    }));
+}
+
+function publicMayor(room) {
+    const m = room.mayor;
+    return {
+        id: m.id,
+        accountId: m.accountId || null,
+        name: m.name,
+        avatar: m.avatar,
+        decoration: m.decoration || null,
+        connected: m.connected !== false
+    };
+}
+
+function broadcastLobby(room) {
+    io.to(room.code).emit("players-updated", lobbyPlayers(room));
+}
+
+// Роль погибшего видна всем в лёгком режиме; в сложном — никогда.
+// После конца игры роли раскрываются всем.
+function publicPlayers(room, revealAll = false) {
+    const isEasy = room.difficulty !== "hard";
+    return room.players.map((p) => ({
+        id: p.id,
+        accountId: p.accountId || null,
+        name: p.name,
+        avatar: p.avatar,
+        alive: p.alive !== false,
+        connected: p.connected !== false,
+        role: revealAll || (p.alive === false && isEasy) ? p.role : undefined,
+        readyForGame: !!p.readyForGame
+    }));
+}
+
+function emitPhase(room, data) {
+    room.lastPhase = data;
+    io.to(room.code).emit("game-phase", data);
+}
+
+function openAbilityWindow(room, phase) {
+    room.abilityWindow = { phase, expiresAt: Date.now() + ABILITY_WINDOW_MS };
+    room.abilityEffects = {
+        extraVoteWeight: {},
+        voteImmune: [],
+        nightImmune: room.abilityEffects && phase === "day" ? room.abilityEffects.nightImmune : [],
+        hiddenNames: []
+    };
+    io.to(room.code).emit("ability-window", room.abilityWindow);
+}
+
 const ABILITY_DEFS = {
     voice_change: { type: "day" },
     extra_vote: { type: "day" },
@@ -140,26 +412,11 @@ const ABILITY_DEFS = {
     night_immortality: { type: "night" },
     reveal_role: { type: "night", needsTarget: true }
 };
-const ROLE_META = {
-    doctor: { name: "Доктор", category: "civilians" },
-    krasotka: { name: "Красотка", category: "civilians" },
-    mafia: { name: "Мафиози", category: "mafia" },
-    manyak: { name: "Маньяк", category: "neutrals" },
-    obivatel: { name: "Обыватель", category: "civilians" },
-    otez: { name: "Крёстный отец", category: "mafia" },
-    poklon: { name: "Поклонница", category: "neutrals" },
-    potroshitel: { name: "Потрошитель", category: "neutrals" },
-    sherif: { name: "Шериф", category: "civilians" },
-    stukach: { name: "Стукач", category: "neutrals" },
-    sveshennik: { name: "Священник", category: "civilians" },
-    vor: { name: "Вор", category: "mafia" }
-};
 const FACTION_LABELS = {
     civilians: "Мирные жители",
     mafia: "Мафия",
     neutrals: "Нейтралы"
 };
-
 // Сложный режим: вместо роли погибшего показываем, "от чьей руки" он погиб.
 const KILLER_LABELS = {
     mafia: "мафии",
@@ -169,1491 +426,941 @@ const KILLER_LABELS = {
     sveshennik: "священника",
     krasotka_redirect: "неизвестного"
 };
+const WIN_LABELS = {
+    town: "Мирные жители",
+    mafia: "Мафия",
+    neutral: "Нейтралы",
+    manyak: "Маньяк",
+    potroshitel: "Потрошитель",
+    draw: "Ничья"
+};
+const roleName = (r) => GameFlowManager.ROLE_NAMES[r] || r;
 
-function openAbilityWindow(room, phase) {
-    room.abilityWindow = { phase, expiresAt: Date.now() + ABILITY_WINDOW_MS };
-    room.abilityEffects = {
-        extraVoteWeight: {},
-        voteImmune: [],
-        nightImmune: [],
-        hiddenNames: []
+// ---------- Ночь ----------
+function sendNight(room, night) {
+    if (!night) return;
+
+    if (night.phase === "night_end") {
+        // Предпросмотр итогов ночи — только мэру. Раньше он уходил всем
+        // игрокам, и в сетевом трафике были видны чужие проверки.
+        room.lastPhase = { phase: "night_end" };
+        room.players.forEach((p) => io.to(p.id).emit("game-phase", { phase: "night_end" }));
+        io.to(room.mayor.id).emit("game-phase", {
+            phase: "night_end",
+            results: (night.resultsPreview || []).filter((r) => !r.privateTo)
+        });
+        return;
+    }
+
+    // Всем — только кто "просыпается"; цели и состав ходящих — лично ходящим.
+    // (Раньше список ходящих уходил всем, и по нему было видно, кто мафия.)
+    const publicData = {
+        phase: "night",
+        phrase: night.phrase,
+        nightInfo: {
+            step: { role: night.step.role, label: night.step.label },
+            actorsCount: night.actors.length,
+            night: room.night
+        }
     };
-}
-
-io.on("connection", (socket) => {
-
-    console.log("🟢 Игрок подключился:", socket.id);
-
-    // ==========================
-    // Presence: регистрация онлайн-статуса (для системы друзей)
-    // ==========================
-    socket.on("presence:hello", (accountId, name) => {
-        if (!accountId) return;
-        socket.data.accountId = accountId;
-        presence[accountId] = {
-            socketId: socket.id,
-            name: name || presence[accountId]?.name || "Игрок",
-            roomCode: presence[accountId]?.roomCode || null,
-            isMayor: presence[accountId]?.isMayor || false
-        };
-        if (name) {
-            accountProfiles[accountId] = { ...accountProfiles[accountId], name };
-        }
-        broadcastPresence(accountId);
-    });
-
-    // Поиск игрока по ID (для вкладки "Друзья")
-    socket.on("presence:search", (id, callback) => {
-        if (typeof callback !== "function") return;
-        callback(presenceStatus(String(id || "").trim()));
-    });
-
-    // Массовый статус (для списка друзей / недавних игроков)
-    socket.on("presence:bulk", (ids, callback) => {
-        if (typeof callback !== "function") return;
-        const list = (Array.isArray(ids) ? ids : []).map((id) => presenceStatus(id));
-        callback(list);
-    });
-
-    // ==========================
-    // Друзья: постучаться в комнату мэра
-    // ==========================
-    socket.on("friend:knock", ({ toAccountId, roomCode, fromAccountId, fromName }, callback) => {
-        const cb = typeof callback === "function" ? callback : () => {};
-        const room = RoomManager.getRoom(roomCode);
-
-        if (!room || !room.mayor?.id) {
-            cb({ success: false, message: "Комната не найдена" });
-            return;
-        }
-
-        io.to(room.mayor.id).emit("friend:incoming-request", {
-            requesterSocketId: socket.id,
-            requesterAccountId: fromAccountId,
-            requesterName: fromName,
-            roomCode
-        });
-
-        cb({ success: true });
-    });
-
-    // Мэр принял/отклонил заявку друга
-    socket.on("friend:mayor-response", ({ roomCode, requesterSocketId, accepted }) => {
-        const room = RoomManager.getRoom(roomCode);
-        if (!room || room.mayor?.id !== socket.id) return;
-
-        io.to(requesterSocketId).emit("friend:join-decision", {
-            accepted: !!accepted,
-            roomCode
-        });
-    });
-
-    // ==========================
-    // Публичный профиль (иконка/любимая роль/победы)
-    // ==========================
-    socket.on("profile:update", ({ accountId, icon, favoriteRole, wins, name }) => {
-        if (!accountId) return;
-        accountProfiles[accountId] = {
-            ...accountProfiles[accountId],
-            ...(icon !== undefined ? { icon } : {}),
-            ...(favoriteRole !== undefined ? { favoriteRole } : {}),
-            ...(typeof wins === "number" ? { wins } : {}),
-            ...(name ? { name } : {})
-        };
-        saveSocial();
-        io.emit("profile:changed", publicProfile(accountId));
-    });
-
-    socket.on("profile:get", (accountId, callback) => {
-        if (typeof callback !== "function") return;
-        callback(publicProfile(accountId));
-    });
-
-    // Засчитать победу игроку (вызывается клиентом один раз в конце игры,
-    // если он реально играл и оказался на победившей стороне). Инкремент
-    // делается на сервере, а не абсолютным значением с клиента — так надёжнее,
-    // клиенту не нужно знать текущий счёт.
-    socket.on("profile:register-win", (accountId) => {
-        if (!accountId) return;
-        accountProfiles[accountId] = {
-            ...accountProfiles[accountId],
-            wins: (accountProfiles[accountId]?.wins || 0) + 1
-        };
-        saveSocial();
-        io.emit("profile:changed", publicProfile(accountId));
-    });
-
-    // "Мир" — топ-200 игроков по количеству побед
-    socket.on("leaderboard:get", (callback) => {
-        if (typeof callback !== "function") return;
-        const list = Object.entries(accountProfiles)
-            .map(([id, prof]) => ({
-                id,
-                name: prof.name || `Игрок #${id}`,
-                icon: prof.icon || null,
-                wins: typeof prof.wins === "number" ? prof.wins : 0
-            }))
-            .filter((p) => p.wins > 0)
-            .sort((a, b) => b.wins - a.wins)
-            .slice(0, 200);
-        callback(list);
-    });
-
-    // ==========================
-    // Друзья — без заявок: добавление сразу и взаимно, обеим сторонам.
-    // Список хранится на диске (server/data/social.json), поэтому виден
-    // сразу же и переживает перезапуск сервера.
-    // ==========================
-
-    // Добавить в друзья — сразу взаимно, без подтверждения второй стороны
-    socket.on("friend:add", ({ toAccountId, fromAccountId, fromName, fromIcon }, callback) => {
-        const cb = typeof callback === "function" ? callback : () => {};
-        if (!toAccountId || !fromAccountId || toAccountId === fromAccountId) {
-            return cb({ success: false, message: "Некорректный запрос" });
-        }
-
-        addMutualFriend(fromAccountId, toAccountId);
-        addMutualFriend(toAccountId, fromAccountId);
-        saveSocial();
-
-        // Обновим профиль отправителя, если прислал свежее имя/иконку
-        if (fromName || fromIcon !== undefined) {
-            accountProfiles[fromAccountId] = {
-                ...accountProfiles[fromAccountId],
-                ...(fromName ? { name: fromName } : {}),
-                ...(fromIcon !== undefined ? { icon: fromIcon } : {})
-            };
-            saveSocial();
-        }
-
-        // Получателю — живое уведомление, если он сейчас онлайн
-        const targetSocketId = presence[toAccountId]?.socketId;
-        if (targetSocketId) {
-            io.to(targetSocketId).emit("friend:added", friendProfile(fromAccountId));
-        }
-
-        cb({ success: true, friend: friendProfile(toAccountId) });
-    });
-
-    // Удалить из друзей — тоже сразу и взаимно
-    socket.on("friend:remove", ({ myAccountId, friendId }, callback) => {
-        const cb = typeof callback === "function" ? callback : () => {};
-        if (!myAccountId || !friendId) return cb({ success: false });
-
-        if (friendsList[myAccountId]) {
-            friendsList[myAccountId] = friendsList[myAccountId].filter((id) => id !== friendId);
-        }
-        if (friendsList[friendId]) {
-            friendsList[friendId] = friendsList[friendId].filter((id) => id !== myAccountId);
-        }
-        saveSocial();
-
-        const targetSocketId = presence[friendId]?.socketId;
-        if (targetSocketId) {
-            io.to(targetSocketId).emit("friend:removed", { byAccountId: myAccountId });
-        }
-
-        cb({ success: true });
-    });
-
-    // Мой список друзей — всегда с сервера, поэтому виден сразу с любого устройства
-    socket.on("friend:get-list", (accountId, callback) => {
-        if (typeof callback !== "function") return;
-        const ids = friendsList[accountId] || [];
-        callback(ids.map(friendProfile));
-    });
-
-    // ==========================
-    // Активация купленной способности (10 сек окно в начале дня/ночи)
-    // ==========================
-    socket.on("ability:activate", ({ roomCode, abilityId, targetId }, callback) => {
-        const cb = typeof callback === "function" ? callback : () => {};
-        const room = RoomManager.getRoom(roomCode);
-        if (!room) return cb({ success: false, message: "Комната не найдена" });
-
-        if (room.abilitiesEnabled === false) {
-            return cb({ success: false, message: "Мэр запретил способности в этой игре" });
-        }
-
-        const def = ABILITY_DEFS[abilityId];
-        if (!def) return cb({ success: false, message: "Неизвестная способность" });
-
-        if (!room.abilityWindow || Date.now() > room.abilityWindow.expiresAt) {
-            return cb({ success: false, message: "Окно активации закрыто" });
-        }
-        if (room.abilityWindow.phase !== def.type) {
-            return cb({ success: false, message: "Сейчас нельзя использовать эту способность" });
-        }
-
-        const me = room.players.find((p) => p.id === socket.id && p.alive !== false);
-        if (!me) return cb({ success: false, message: "Недоступно" });
-
-        if (def.needsTarget && !targetId) {
-            return cb({ success: false, message: "Нужна цель" });
-        }
-
-        room.abilityEffects = room.abilityEffects || {
-            extraVoteWeight: {},
-            voteImmune: [],
-            nightImmune: [],
-            hiddenNames: []
-        };
-
-        let info = null;
-
-        switch (abilityId) {
-            case "voice_change":
-                room.abilityEffects.hiddenNames.push(socket.id);
-                break;
-
-            case "extra_vote":
-                room.abilityEffects.extraVoteWeight[socket.id] =
-                    (room.abilityEffects.extraVoteWeight[socket.id] || 1) + 1;
-                break;
-
-            case "vote_immunity":
-                room.abilityEffects.voteImmune.push(socket.id);
-                break;
-
-            case "reveal_faction": {
-                const target = room.players.find((p) => p.id === targetId && p.alive !== false);
-                if (!target) return cb({ success: false, message: "Цель не найдена" });
-                const meta = ROLE_META[target.role];
-                info = `${target.name}: фракция «${FACTION_LABELS[meta?.category] || "неизвестно"}»`;
-                break;
-            }
-
-            case "night_immortality":
-                room.abilityEffects.nightImmune.push(socket.id);
-                break;
-
-            case "reveal_role": {
-                const target = room.players.find((p) => p.id === targetId && p.alive !== false);
-                if (!target) return cb({ success: false, message: "Цель не найдена" });
-                const meta = ROLE_META[target.role];
-                info = `${target.name}: роль «${meta?.name || target.role}»`;
-                break;
-            }
-
-            default:
-                return cb({ success: false, message: "Неизвестная способность" });
-        }
-
-        cb({ success: true, info });
-    });
-
-    // ==========================
-    // Создание комнаты
-    // ==========================
-    socket.on("create-room", (mayorName, avatar, accountId, callback) => {
-        // поддержка старой сигнатуры (mayorName, avatar, callback)
-        if (typeof accountId === "function") {
-            callback = accountId;
-            accountId = null;
-        }
-
-        const room = RoomManager.createRoom(socket, mayorName, avatar);
-        if (accountId) {
-            room.mayor.accountId = accountId;
-            if (presence[accountId]) {
-                presence[accountId].roomCode = room.code;
-                presence[accountId].isMayor = true;
-                broadcastPresence(accountId);
-            }
-        }
-
-        const response = {
-            success: true,
-            roomCode: room.code,
-            mayor: room.mayor,
-            players: room.players
-        };
-
-        if (typeof callback === "function") {
-            callback(response);
-        } else {
-            socket.emit("room-created", response);
-        }
-
-        console.log(`👑 Создана комната ${room.code}`);
-    });
-
-    // ==========================
-    // Вход в комнату
-    // ==========================
-    socket.on("join-room", (roomCode, playerName, avatar, accountId, callback) => {
-        // поддержка старой сигнатуры (roomCode, playerName, avatar, callback)
-        if (typeof accountId === "function") {
-            callback = accountId;
-            accountId = null;
-        }
-
-        const result = RoomManager.joinRoom(socket, roomCode, {
-            name: playerName,
-            avatar
-        });
-
-        if (!result.success) {
-            if (typeof callback === "function") callback(result);
-            return;
-        }
-
-        const amMayor = result.room.mayor.id === socket.id;
-
-        if (accountId) {
-            if (amMayor) {
-                result.room.mayor.accountId = accountId;
-            } else {
-                const me = result.room.players.find((p) => p.id === socket.id);
-                if (me) me.accountId = accountId;
-            }
-            if (presence[accountId]) {
-                presence[accountId].roomCode = roomCode;
-                presence[accountId].isMayor = amMayor;
-                broadcastPresence(accountId);
-            }
-        }
-
-        // Если это мэр вернулся после F5 — отменяем таймер закрытия комнаты
-        if (amMayor && mayorGraceTimers[roomCode]) {
-            clearTimeout(mayorGraceTimers[roomCode]);
-            delete mayorGraceTimers[roomCode];
-            console.log(`👑 Мэр переподключился, комната ${roomCode} остаётся открытой`);
-        }
-
-        io.to(roomCode).emit("players-updated", result.room.players);
-
-        if (typeof callback === "function") {
-            callback({
-                success: true,
-                roomCode,
-                players: result.room.players,
-                mayor: result.room.mayor
-            });
-        }
-
-        console.log(`👤 ${playerName} вошёл в комнату ${roomCode}`);
-    });
-
-    // ==========================
-    // Выход из комнаты
-    // ==========================
-    socket.on("leave-room", (roomCode) => {
-        const room = RoomManager.getRoom(roomCode);
-        if (!room) return;
-
-        // игрок выходит
-        room.players = room.players.filter((p) => p.id !== socket.id);
-
-        // мэр выходит — комната закрывается
-        if (room.mayor?.id === socket.id) {
-            io.to(roomCode).emit("room-closed", { reason: "Мэр покинул комнату" });
-            RoomManager.deleteRoom(roomCode);
-            return;
-        }
-
-        socket.leave(roomCode);
-        io.to(roomCode).emit("players-updated", room.players);
-    });
-
-    // ==========================
-    // Кик игрока
-    // ==========================
-    socket.on("kick-player", (roomCode, playerId) => {
-        console.log("🔥 kick-player", roomCode, playerId);
-
-        const room = RoomManager.getRoom(roomCode);
-        if (!room) return;
-
-        if (room.mayor?.id !== socket.id) return;
-
-        room.players = room.players.filter(p => p.id !== playerId);
-
-        const kickedSocket = io.sockets.sockets.get(playerId);
-        if (kickedSocket) {
-            kickedSocket.leave(roomCode);
-            kickedSocket.emit("kicked", { reason: "Вас выгнал мэр" });
-        }
-
-        io.to(roomCode).emit("players-updated", room.players);
-        console.log("✅ Игрок выгнан");
-    });
-
-    // ==========================
-    // Настройка ролей
-    // ==========================
-    socket.on("setup-roles", (roomCode, roles) => {
-        const room = RoomManager.getRoom(roomCode);
-        if (!room) return;
-
-        room.selectedRoles = roles;
-        room.phase = "LOBBY";
-        io.to(roomCode).emit("roles-updated", roles);
-        console.log(`🎭 Комната ${roomCode} настроена.`);
-    });
-
-    // Мэр может запретить способности в этой игре — вызывается перед стартом
-    socket.on("set-abilities-enabled", (roomCode, enabled) => {
-        const room = RoomManager.getRoom(roomCode);
-        if (!room || room.mayor?.id !== socket.id) return;
-        room.abilitiesEnabled = !!enabled;
-        console.log(`🧩 Способности в ${roomCode}: ${room.abilitiesEnabled ? "разрешены" : "запрещены"}`);
-    });
-
-    // Сложность игры: "easy" — как обычно (мэр не знает роли, роли погибших видны);
-    // "hard" — роли погибших никогда не раскрываются, только имя/причина смерти.
-    socket.on("set-difficulty", (roomCode, difficulty) => {
-        const room = RoomManager.getRoom(roomCode);
-        if (!room || room.mayor?.id !== socket.id) return;
-        room.difficulty = difficulty === "hard" ? "hard" : "easy";
-        console.log(`🎚️ Сложность в ${roomCode}: ${room.difficulty}`);
-    });
-
-    socket.on("lobby-open", (roomCode) => {
-        const room = RoomManager.getRoom(roomCode);
-        if (!room) return;
-
-        room.phase = "LOBBY";
-        io.to(roomCode).emit("lobby-open");
-    });
-
-    // ==========================
-    // Украшение
-    // ==========================
-    socket.on("set-decoration", (roomCode, decorationId) => {
-        const room = RoomManager.getRoom(roomCode);
-        if (!room) return;
-
-        if (room.mayor?.id === socket.id) {
-            room.mayor.decoration = decorationId || null;
-            io.to(roomCode).emit("mayor-updated", {
-                id: room.mayor.id,
-                name: room.mayor.name,
-                avatar: room.mayor.avatar,
-                decoration: room.mayor.decoration || null
-            });
-            return;
-        }
-
-        const player = room.players.find(p => p.id === socket.id);
-        if (!player) return;
-
-        player.decoration = decorationId || null;
-
-        const payload = room.players.map(p => ({
-            id: p.id,
-            name: p.name,
-            avatar: p.avatar,
-            ready: !!p.ready,
-            decoration: p.decoration || null
-        }));
-
-        io.to(roomCode).emit("players-ready", payload);
-    });
-
-    // ==========================
-    // Эмодзи
-    // ==========================
-    socket.on("send-emoji", (roomCode, emojiId) => {
-        const room = RoomManager.getRoom(roomCode);
-        if (!room) return;
-        if (!room.players.some(p => p.id === socket.id) && room.mayor?.id !== socket.id) return;
-
-        io.to(roomCode).emit("emoji-sent", { playerId: socket.id, emojiId });
-    });
-
-    // ==========================
-    // Админ валюта
-    // ==========================
-    socket.on("admin-give-currency", (roomCode, targetId, amount) => {
-        const room = RoomManager.getRoom(roomCode);
-        if (!room) return;
-
-        const value = Math.max(0, Math.floor(Number(amount)) || 0);
-        if (!value) return;
-
-        io.to(targetId).emit("you-received-currency", {
-            amount: value,
-            from: "admin"
-        });
-    });
-
-    // ==========================
-    // Игрок готов (лобби)
-    // ==========================
-    socket.on("player-ready", (roomCode) => {
-        console.log(">>> player-ready", socket.id, roomCode);
-
-        const room = RoomManager.getRoom(roomCode);
-        if (!room) return;
-
-        const player = room.players.find(p => p.id === socket.id);
-        if (!player) return;
-
-        player.ready = !player.ready;
-
-        const payload = room.players.map(p => ({
-            id: p.id,
-            name: p.name,
-            avatar: p.avatar,
-            ready: !!p.ready,
-            decoration: p.decoration || null
-        }));
-
-        io.to(roomCode).emit("players-ready", payload);
-
-        if (room.mayor?.id) {
-            io.to(room.mayor.id).emit("players-ready", payload);
-        }
-
-        const everyoneReady = room.players.length > 0 && room.players.every(p => p.ready);
-        if (everyoneReady && room.mayor?.id) {
-            io.to(room.mayor.id).emit("everyone-ready");
-        }
-    });
-
-    // ==========================
-    // Ночные действия (старые обработчики)
-    // ==========================
-
-    // Доктор
-    socket.on("doctor-action", (roomCode, targetId) => {
-        const room = RoomManager.getRoom(roomCode);
-        if (!room) return;
-
-        if (room.currentNightRole !== "doctor") {
-            socket.emit("night-action-error", { message: "Сейчас не ход Доктора." });
-            return;
-        }
-
-        const doctor = room.players.find(p => p.id === socket.id && p.role === "doctor" && p.alive !== false);
-        if (!doctor) {
-            socket.emit("night-action-error", { message: "Вы не можете выполнить это действие." });
-            return;
-        }
-
-        const target = room.players.find(p => p.id === targetId && p.alive !== false);
-        if (!target) {
-            socket.emit("night-action-error", { message: "Игрок не найден или уже мёртв." });
-            return;
-        }
-
-        const result = NightManager.completeRole(roomCode, "doctor", {
-            targetId: target.id,
-            targetName: target.name
-        });
-
-        if (!result.success) {
-            socket.emit("night-action-error", { message: result.message || "Не удалось выполнить действие." });
-            return;
-        }
-
-        socket.emit("doctor-action-complete", {
-            targetId: target.id,
-            targetName: target.name
-        });
-
-        if (!result.finished) {
-            io.to(roomCode).emit("night-role", { role: result.role, night: room.night });
-            return;
-        }
-
-        io.to(roomCode).emit("night-finished", { night: room.night });
-    });
-
-    // Мафия
-    socket.on("mafia-action", (roomCode, targetId) => {
-        const room = RoomManager.getRoom(roomCode);
-        if (!room) return;
-
-        if (room.currentNightRole !== "mafia") {
-            socket.emit("night-action-error", { message: "Сейчас не ход Мафии." });
-            return;
-        }
-
-        const mafiaPlayer = room.players.find(p => p.id === socket.id && p.role === "mafia" && p.alive !== false);
-        if (!mafiaPlayer) {
-            socket.emit("night-action-error", { message: "Вы не можете выполнить действие Мафии." });
-            return;
-        }
-
-        const target = room.players.find(p => p.id === targetId && p.alive !== false);
-        if (!target) {
-            socket.emit("night-action-error", { message: "Игрок не найден или уже мёртв." });
-            return;
-        }
-
-        if (target.role === "mafia" || target.role === "otez" || target.role === "vor") {
-            socket.emit("night-action-error", { message: "Мафия не может выбрать своего союзника." });
-            return;
-        }
-
-        if (!room.nightActions.mafia) {
-            room.nightActions.mafia = {
-                targetId: null,
-                targetName: null,
-                players: []
-            };
-        }
-
-        const alreadyActed = room.nightActions.mafia.players.some(id => id === socket.id);
-        if (alreadyActed) {
-            socket.emit("night-action-error", { message: "Вы уже сделали выбор." });
-            return;
-        }
-
-        room.nightActions.mafia.players.push(socket.id);
-
-        if (!room.nightActions.mafia.targetId) {
-            room.nightActions.mafia.targetId = target.id;
-            room.nightActions.mafia.targetName = target.name;
-            console.log(`🔫 Мафия выбрала общую жертву: ${target.name}`);
-        } else if (room.nightActions.mafia.targetId !== target.id) {
-            room.nightActions.mafia.players = room.nightActions.mafia.players.filter(id => id !== socket.id);
-            socket.emit("night-action-error", { message: "Мафия должна выбрать ту же жертву." });
-            return;
-        }
-
-        socket.emit("mafia-action-complete", {
-            targetId: room.nightActions.mafia.targetId,
-            targetName: room.nightActions.mafia.targetName
-        });
-
-        const aliveMafia = room.players.filter(p => p.alive !== false && p.role === "mafia");
-        const allMafiaActed = room.nightActions.mafia.players.length >= aliveMafia.length;
-
-        if (!allMafiaActed) {
-            console.log("⏳ Ждём остальных мафиози...");
-            return;
-        }
-
-        const result = NightManager.completeRole(roomCode, "mafia", {
-            targetId: room.nightActions.mafia.targetId,
-            targetName: room.nightActions.mafia.targetName
-        });
-
-        if (!result.success) {
-            socket.emit("night-action-error", { message: result.message || "Не удалось завершить ход Мафии." });
-            return;
-        }
-
-        if (!result.finished) {
-            io.to(roomCode).emit("night-role", { role: result.role, night: room.night });
-            return;
-        }
-
-        io.to(roomCode).emit("night-finished", { night: room.night });
-    });
-
-    // Крестный отец
-    socket.on("godfather-action", (roomCode, targetId) => {
-        const room = RoomManager.getRoom(roomCode);
-        if (!room) return;
-
-        if (room.currentNightRole !== "otez") {
-            socket.emit("night-action-error", { message: "Сейчас не ход Крестного отца." });
-            return;
-        }
-
-        const godfather = room.players.find(p => p.id === socket.id && p.role === "otez" && p.alive !== false);
-        if (!godfather) {
-            socket.emit("night-action-error", { message: "Вы не можете выполнить это действие." });
-            return;
-        }
-
-        const target = room.players.find(p => p.id === targetId && p.alive !== false);
-        if (!target) {
-            socket.emit("night-action-error", { message: "Игрок не найден или уже мёртв." });
-            return;
-        }
-
-        room.nightActions.otez = {
-            targetId: target.id,
-            targetName: target.name
-        };
-
-        socket.emit("godfather-action-complete", {
-            targetId: target.id,
-            targetName: target.name
-        });
-
-        const result = NightManager.completeRole(roomCode, "otez", {
-            targetId: target.id,
-            targetName: target.name
-        });
-
-        if (!result.success) {
-            socket.emit("night-action-error", { message: result.message || "Не удалось завершить ход." });
-            return;
-        }
-
-        if (!result.finished) {
-            io.to(roomCode).emit("night-role", { role: result.role, night: room.night });
-            return;
-        }
-
-        io.to(roomCode).emit("night-finished", { night: room.night });
-    });
-
-    // Маньяк
-    socket.on("maniac-action", (roomCode, targetId) => {
-        const room = RoomManager.getRoom(roomCode);
-        if (!room) return;
-
-        if (room.currentNightRole !== "manyak") {
-            socket.emit("night-action-error", { message: "Сейчас не ход Маньяка." });
-            return;
-        }
-
-        const maniac = room.players.find(p => p.id === socket.id && p.role === "manyak" && p.alive !== false);
-        if (!maniac) {
-            socket.emit("night-action-error", { message: "Вы не можете выполнить действие Маньяка." });
-            return;
-        }
-
-        const target = room.players.find(p => p.id === targetId && p.alive !== false);
-        if (!target) {
-            socket.emit("night-action-error", { message: "Игрок не найден или уже мёртв." });
-            return;
-        }
-
-        if (target.id === maniac.id) {
-            socket.emit("night-action-error", { message: "Маньяк не может выбрать себя." });
-            return;
-        }
-
-        room.nightActions.manyak = {
-            targetId: target.id,
-            targetName: target.name
-        };
-
-        socket.emit("maniac-action-complete", {
-            targetId: target.id,
-            targetName: target.name
-        });
-
-        const result = NightManager.completeRole(roomCode, "manyak", {
-            targetId: target.id,
-            targetName: target.name
-        });
-
-        if (!result.success) {
-            socket.emit("night-action-error", { message: result.message || "Не удалось завершить ход Маньяка." });
-            return;
-        }
-
-        if (!result.finished) {
-            io.to(roomCode).emit("night-role", { role: result.role, night: room.night });
-            return;
-        }
-
-        io.to(roomCode).emit("night-finished", { night: room.night });
-    });
-
-    // Потрошитель
-    socket.on("butcher-action", (roomCode, targetId) => {
-        const room = RoomManager.getRoom(roomCode);
-        if (!room) return;
-
-        if (room.currentNightRole !== "potroshitel") {
-            socket.emit("night-action-error", { message: "Сейчас не ход Потрошителя." });
-            return;
-        }
-
-        const butcher = room.players.find(p => p.id === socket.id && p.role === "potroshitel" && p.alive !== false);
-        if (!butcher) {
-            socket.emit("night-action-error", { message: "Вы не можете выполнить действие Потрошителя." });
-            return;
-        }
-
-        const target = room.players.find(p => p.id === targetId && p.alive !== false);
-        if (!target) {
-            socket.emit("night-action-error", { message: "Игрок не найден или уже мёртв." });
-            return;
-        }
-
-        if (target.id === butcher.id) {
-            socket.emit("night-action-error", { message: "Потрошитель не может выбрать себя." });
-            return;
-        }
-
-        if (target.role === "obivatel") {
-            socket.emit("night-action-error", { message: "Потрошитель не может убивать обывателей." });
-            return;
-        }
-
-        room.nightActions.potroshitel = {
-            targetId: target.id,
-            targetName: target.name
-        };
-
-        socket.emit("butcher-action-complete", {
-            targetId: target.id,
-            targetName: target.name
-        });
-
-        const result = NightManager.completeRole(roomCode, "potroshitel", {
-            targetId: target.id,
-            targetName: target.name
-        });
-
-        if (!result.success) {
-            socket.emit("night-action-error", { message: result.message || "Не удалось завершить ход Потрошителя." });
-            return;
-        }
-
-        if (!result.finished) {
-            io.to(roomCode).emit("night-role", { role: result.role, night: room.night });
-            return;
-        }
-
-        io.to(roomCode).emit("night-finished", { night: room.night });
-    });
-
-    // Шериф
-    socket.on("sherif-action", (roomCode, targetId) => {
-        const room = RoomManager.getRoom(roomCode);
-        if (!room) return;
-
-        if (room.currentNightRole !== "sherif") {
-            socket.emit("night-action-error", { message: "Сейчас не ход Шерифа." });
-            return;
-        }
-
-        const sherif = room.players.find(p => p.id === socket.id && p.role === "sherif" && p.alive !== false);
-        if (!sherif) {
-            socket.emit("night-action-error", { message: "Вы не можете выполнить действие Шерифа." });
-            return;
-        }
-
-        const target = room.players.find(p => p.id === targetId && p.alive !== false);
-        if (!target) {
-            socket.emit("night-action-error", { message: "Игрок не найден или уже мёртв." });
-            return;
-        }
-
-        if (target.id === sherif.id) {
-            socket.emit("night-action-error", { message: "Шериф не может выбрать себя." });
-            return;
-        }
-
-        room.nightActions.sherif = {
-            targetId: target.id,
-            targetName: target.name
-        };
-
-        socket.emit("sherif-action-complete", {
-            targetId: target.id,
-            targetName: target.name
-        });
-
-        const result = NightManager.completeRole(roomCode, "sherif", {
-            targetId: target.id,
-            targetName: target.name
-        });
-
-        if (!result.success) {
-            socket.emit("night-action-error", { message: result.message || "Не удалось завершить ход Шерифа." });
-            return;
-        }
-
-        if (!result.finished) {
-            io.to(roomCode).emit("night-role", { role: result.role, night: room.night });
-            return;
-        }
-
-        io.to(roomCode).emit("night-finished", { night: room.night });
-    });
-
-    // Священник
-    socket.on("priest-action", (roomCode, action, targetId) => {
-        const room = RoomManager.getRoom(roomCode);
-        if (!room) return;
-
-        if (room.currentNightRole !== "sveshennik") {
-            socket.emit("night-action-error", { message: "Сейчас не ход Священника." });
-            return;
-        }
-
-        const priest = room.players.find(p => p.id === socket.id && p.role === "sveshennik" && p.alive !== false);
-        if (!priest) {
-            socket.emit("night-action-error", { message: "Вы не можете выполнить действие Священника." });
-            return;
-        }
-
-        if (action !== "check" && action !== "kill") {
-            socket.emit("night-action-error", { message: "Неизвестное действие Священника." });
-            return;
-        }
-
-        const target = room.players.find(p => p.id === targetId && p.alive !== false);
-        if (!target) {
-            socket.emit("night-action-error", { message: "Игрок не найден или уже мёртв." });
-            return;
-        }
-
-        if (target.id === priest.id) {
-            socket.emit("night-action-error", { message: "Нельзя выбрать себя." });
-            return;
-        }
-
-        if (action === "check") {
-            socket.emit("priest-check-result", {
-                targetId: target.id,
-                targetName: target.name,
-                role: target.role
-            });
-
-            const result = NightManager.completeRole(roomCode, "sveshennik", {
-                type: "check",
-                targetId: target.id,
-                targetName: target.name,
-                role: target.role
-            });
-
-            if (!result.success) return;
-
-            if (!result.finished) {
-                io.to(roomCode).emit("night-role", { role: result.role, night: room.night });
-                return;
-            }
-
-            io.to(roomCode).emit("night-finished", { night: room.night });
-            return;
-        }
-
-        if (action === "kill") {
-            room.nightActions.sveshennik = {
-                targetId: target.id,
-                targetName: target.name
-            };
-
-            socket.emit("priest-kill-complete", {
-                targetId: target.id,
-                targetName: target.name
-            });
-
-            const result = NightManager.completeRole(roomCode, "sveshennik", {
-                type: "kill",
-                targetId: target.id,
-                targetName: target.name
-            });
-
-            if (!result.success) {
-                socket.emit("night-action-error", { message: result.message || "Не удалось завершить ход." });
-                return;
-            }
-
-            if (!result.finished) {
-                io.to(roomCode).emit("night-role", { role: result.role, night: room.night });
-                return;
-            }
-
-            io.to(roomCode).emit("night-finished", { night: room.night });
-        }
-    });
-
-    // Красотка
-    socket.on("krasotka-action", (roomCode, targetId) => {
-        const room = RoomManager.getRoom(roomCode);
-        if (!room) return;
-
-        if (room.currentNightRole !== "krasotka") {
-            socket.emit("night-action-error", { message: "Сейчас не ход Красотки." });
-            return;
-        }
-
-        const krasotka = room.players.find(p => p.id === socket.id && p.role === "krasotka" && p.alive !== false);
-        if (!krasotka) {
-            socket.emit("night-action-error", { message: "Вы не можете выполнить действие Красотки." });
-            return;
-        }
-
-        const target = room.players.find(p => p.id === targetId && p.alive !== false);
-        if (!target) {
-            socket.emit("night-action-error", { message: "Игрок не найден или уже мёртв." });
-            return;
-        }
-
-        if (target.id === krasotka.id) {
-            socket.emit("night-action-error", { message: "Красотка не может выбрать себя." });
-            return;
-        }
-
-        room.nightActions.krasotka = {
-            targetId: target.id,
-            targetName: target.name
-        };
-
-        socket.emit("krasotka-action-complete", {
-            targetId: target.id,
-            targetName: target.name
-        });
-
-        const result = NightManager.completeRole(roomCode, "krasotka", {
-            targetId: target.id,
-            targetName: target.name
-        });
-
-        if (!result.success) {
-            socket.emit("night-action-error", { message: result.message || "Не удалось завершить ход Красотки." });
-            return;
-        }
-
-        if (!result.finished) {
-            io.to(roomCode).emit("night-role", { role: result.role, night: room.night });
-            return;
-        }
-
-        io.to(roomCode).emit("night-finished", { night: room.night });
-    });
-
-    // Поклонница
-    socket.on("poklonnitsa-action", (roomCode, targetId) => {
-        const room = RoomManager.getRoom(roomCode);
-        if (!room) return;
-
-        if (room.currentNightRole !== "poklon") {
-            socket.emit("night-action-error", { message: "Сейчас не ход Поклонницы." });
-            return;
-        }
-
-        const poklonnitsa = room.players.find(p => p.id === socket.id && p.role === "poklon" && p.alive !== false);
-        if (!poklonnitsa) {
-            socket.emit("night-action-error", { message: "Вы не можете выполнить действие Поклонницы." });
-            return;
-        }
-
-        const target = room.players.find(p => p.id === targetId && p.alive !== false);
-        if (!target) {
-            socket.emit("night-action-error", { message: "Игрок не найден или уже мёртв." });
-            return;
-        }
-
-        if (target.id === poklonnitsa.id) {
-            socket.emit("night-action-error", { message: "Поклонница не может выбрать себя." });
-            return;
-        }
-
-        room.nightActions.poklon = {
-            targetId: target.id,
-            targetName: target.name,
-            targetRole: target.role
-        };
-
-        poklonnitsa.followTargetId = target.id;
-
-        socket.emit("poklonnitsa-result", {
-            targetId: target.id,
-            targetName: target.name,
-            targetRole: target.role
-        });
-
-        const result = NightManager.completeRole(roomCode, "poklon", {
-            targetId: target.id,
-            targetName: target.name,
-            targetRole: target.role
-        });
-
-        if (!result.success) {
-            socket.emit("night-action-error", { message: result.message || "Не удалось завершить ход Поклонницы." });
-            return;
-        }
-
-        if (!result.finished) {
-            io.to(roomCode).emit("night-role", { role: result.role, night: room.night });
-            return;
-        }
-
-        io.to(roomCode).emit("night-finished", { night: room.night });
-    });
-
-    // Стукач
-    socket.on("stykach-action", (roomCode, targetId) => {
-        const room = RoomManager.getRoom(roomCode);
-        if (!room) return;
-
-        if (room.currentNightRole !== "stykach") {
-            socket.emit("night-action-error", { message: "Сейчас не ход Стукача." });
-            return;
-        }
-
-        const stykach = room.players.find(p => p.id === socket.id && p.role === "stykach" && p.alive !== false);
-        if (!stykach) {
-            socket.emit("night-action-error", { message: "Вы не можете выполнить действие Стукача." });
-            return;
-        }
-
-        const target = room.players.find(p => p.id === targetId && p.alive !== false);
-        if (!target) {
-            socket.emit("night-action-error", { message: "Игрок не найден или уже мёртв." });
-            return;
-        }
-
-        if (target.id === stykach.id) {
-            socket.emit("night-action-error", { message: "Стукач не может выбрать себя." });
-            return;
-        }
-
-        room.nightActions.stykach = {
-            targetId: target.id,
-            targetName: target.name,
-            targetRole: target.role
-        };
-
-        socket.emit("stykach-result", {
-            targetId: target.id,
-            targetName: target.name,
-            targetRole: target.role
-        });
-
-        const result = NightManager.completeRole(roomCode, "stykach", {
-            targetId: target.id,
-            targetName: target.name,
-            targetRole: target.role
-        });
-
-        if (!result.success) {
-            socket.emit("night-action-error", { message: result.message || "Не удалось завершить ход Стукача." });
-            return;
-        }
-
-        if (!result.finished) {
-            io.to(roomCode).emit("night-role", { role: result.role, night: room.night });
-            return;
-        }
-
-        io.to(roomCode).emit("night-finished", { night: room.night });
-    });
-
-    // ==========================
-    // Отключение
-    // ==========================
-    socket.on("disconnect", () => {
-        const myAccountId = socket.data.accountId;
-        if (myAccountId && presence[myAccountId]?.socketId === socket.id) {
-            delete presence[myAccountId];
-            broadcastPresence(myAccountId);
-        }
-
-        const room = RoomManager.getRoomBySocket(socket.id);
-
-        if (!room) {
-            console.log("🔴 Игрок отключился:", socket.id);
-            return;
-        }
-
-        const wasMayor = room.mayor?.id === socket.id;
-        const roomCode = room.code;
-
-        RoomManager.removePlayer(socket);
-
-        if (wasMayor) {
-            // Не закрываем комнату сразу — это может быть обычный F5.
-            // Даём мэру немного времени переподключиться под тем же именем.
-            console.log(`👑 Мэр отключился от комнаты ${roomCode}, жду реконнект ${MAYOR_RECONNECT_GRACE_MS}мс...`);
-
-            if (mayorGraceTimers[roomCode]) {
-                clearTimeout(mayorGraceTimers[roomCode]);
-            }
-
-            mayorGraceTimers[roomCode] = setTimeout(() => {
-                const stillRoom = RoomManager.getRoom(roomCode);
-                if (stillRoom && stillRoom.mayor && !stillRoom.mayor.connected) {
-                    io.to(roomCode).emit("room-closed", {
-                        message: "Мэр покинул игру. Комната закрыта."
-                    });
-                    RoomManager.deleteRoom(roomCode);
-                    console.log(`👑 Мэр не вернулся, комната ${roomCode} закрыта.`);
-                }
-                delete mayorGraceTimers[roomCode];
-            }, MAYOR_RECONNECT_GRACE_MS);
-        } else {
-            const updatedRoom = RoomManager.getRoom(roomCode);
-            if (updatedRoom) {
-                io.to(roomCode).emit("players-updated", updatedRoom.players);
-            }
-            console.log(`👤 Игрок покинул комнату ${roomCode}`);
-        }
-
-        console.log("🔴 Отключился:", socket.id);
-    });
-
-    // ========== ИГРА (GameFlowManager) ==========
-
-    function publicPlayers(room) {
-        // Лёгкий режим: роль погибшего игрока раскрывается всем (как в обычной мафии).
-        // Сложный режим: роль не раскрывается никогда, даже после смерти.
-        const isEasy = room.difficulty !== "hard";
-        return room.players.map((p) => ({
-            id: p.id,
-            name: p.name,
-            avatar: p.avatar,
-            alive: p.alive !== false,
-            role: !p.alive && isEasy ? p.role : undefined,
-            // Мэр никогда не знает роли живых игроков — независимо от сложности.
-            readyForGame: !!p.readyForGame
-        }));
-    }
-
-    function emitPhase(roomCode, data) {
-        io.to(roomCode).emit("game-phase", data);
-    }
-
-    // Единая точка завершения игры: считает "Игрока матча" и рассылает результат.
-    function endGame(roomCode, win) {
-        const room = RoomManager.getRoom(roomCode);
-        if (!room) return;
-        room.phase = "ended";
-        room.winner = win;
-        const mvp = GameFlowManager.getMVP(roomCode, win);
-        emitPhase(roomCode, { phase: "ended", winner: win, mvp, players: publicPlayers(room) });
-    }
-
-    function broadcastNight(roomCode, night) {
-        if (!night) return;
-
-        if (night.phase === "night_end") {
-            emitPhase(roomCode, {
-                phase: "night_end",
-                results: night.resultsPreview || []
-            });
-            return;
-        }
-
-        emitPhase(roomCode, {
+    emitPhase(room, publicData);
+    room.lastNight = night;
+
+    const team = night.step.teamAction ? night.actors.map((a) => a.name) : null;
+    night.actors.forEach((actor) => {
+        io.to(actor.id).emit("game-phase", {
             phase: "night",
             phrase: night.phrase,
             nightInfo: {
                 step: night.step,
-                actors: night.actors,
                 targets: night.targets,
-                phrase: night.phrase
+                yourTurn: true,
+                team,
+                night: room.night
             }
         });
+    });
+}
+
+function startNight(room) {
+    const night = GameFlowManager.beginNight(room.code);
+    if (!night) return;
+    if (room.abilitiesEnabled !== false) openAbilityWindow(room, "night");
+    sendNight(room, night);
+}
+
+// Игрок ушёл/выбыл посреди ночи — если его ждал текущий ход, двигаемся дальше
+function nudgeNight(room) {
+    if (room.phase !== "night") return;
+    const step = NIGHT_ORDER[room.nightStepIndex];
+    if (!step) return;
+    const actors = GameFlowManager.stepActors(room, step);
+    const acted = room.nightActions[step.role] || [];
+    if (actors.every((a) => acted.some((x) => x.by === a.id))) {
+        sendNight(room, GameFlowManager.advanceNightStep(room.code));
+    }
+}
+
+// ---------- Конец игры ----------
+function endGame(room, win) {
+    if (!room || room.phase === "ended") return;
+    RoomManager.clearTimers(room);
+    room.phase = "ended";
+    room.winner = win;
+
+    const winners = GameFlowManager.getWinners(room.code, win);
+    const mvp = GameFlowManager.getMVP(room.code, win);
+
+    // Статистика для мирового рейтинга — считает сервер, а не клиент
+    db.stats.gamesPlayed = (db.stats.gamesPlayed || 0) + 1;
+    room.players.forEach((p) => {
+        if (!p.accountId) return;
+        const prof = ensureProfile(p.accountId, p.name);
+        prof.games = (prof.games || 0) + 1;
+        if (winners.includes(p.id)) prof.wins = (prof.wins || 0) + 1;
+        if (mvp && mvp.id === p.id) prof.mvp = (prof.mvp || 0) + 1;
+        prof.lastGameAt = Date.now();
+    });
+    store.save();
+
+    emitPhase(room, {
+        phase: "ended",
+        winner: { ...win, label: win.label || WIN_LABELS[win.winner] || win.winner },
+        winners,
+        mvp,
+        players: publicPlayers(room, true)
+    });
+}
+
+function checkWinAndEnd(room) {
+    const win = GameFlowManager.checkWin(room.code);
+    if (win) {
+        endGame(room, win);
+        return true;
+    }
+    return false;
+}
+
+// После дня (казнь/помилование/никого) — проверка победы и следующая ночь
+function afterDay(room) {
+    RoomManager.addTimer(room, () => {
+        if (checkWinAndEnd(room)) return;
+        emitPhase(room, { phase: "loading", loadingText: "Приближается ночь", players: publicPlayers(room) });
+        RoomManager.addTimer(room, () => startNight(room), 3000);
+    }, 4500);
+}
+
+// ---------- Голосование ----------
+function scheduleVoteEnd(room) {
+    const ms = Math.max(1000, (room.voteEndsAt || Date.now()) - Date.now());
+    const round = room.voteRound;
+    const endsAt = room.voteEndsAt;
+    RoomManager.addTimer(room, () => {
+        if (room.phase === "voting" && room.voteRound === round && room.voteEndsAt === endsAt) {
+            finishVoting(room);
+        }
+    }, ms + 500);
+}
+
+function finishVoting(room) {
+    const voteResult = GameFlowManager.finishVoting(room.code);
+    if (!voteResult) return;
+
+    if (voteResult.type === "pending") {
+        emitPhase(room, { phase: "vote_pending", candidate: voteResult.candidate, voteResult });
+        return;
     }
 
-    socket.on("start-game", (roomCode) => {
-        const room = GameFlowManager.startGame(roomCode);
+    if (voteResult.type === "runoff") {
+        emitPhase(room, { phase: "voting", vote: GameFlowManager.votingSnapshot(room), voteResult });
+        scheduleVoteEnd(room);
+        return;
+    }
+
+    emitPhase(room, { phase: "vote_result", voteResult, players: publicPlayers(room) });
+    afterDay(room);
+}
+
+// ---------- Переподключение посреди игры ----------
+// socket.id меняется после F5 — переносим старый id во всех структурах игры
+function remapSocketId(room, oldId, newId) {
+    if (!oldId || oldId === newId) return;
+    const swap = (id) => (id === oldId ? newId : id);
+    Object.values(room.nightActions || {}).forEach((list) =>
+        (list || []).forEach((a) => {
+            a.by = swap(a.by);
+            a.targetId = swap(a.targetId);
+        })
+    );
+    if (room.votes) {
+        const next = {};
+        Object.entries(room.votes).forEach(([k, v]) => (next[swap(k)] = swap(v)));
+        room.votes = next;
+    }
+    room.blockedVotes = (room.blockedVotes || []).map(swap);
+    room.voteCandidates = (room.voteCandidates || []).map(swap);
+    room.players.forEach((p) => (p.linkedTo = swap(p.linkedTo)));
+    if (room.pendingExecution) room.pendingExecution.id = swap(room.pendingExecution.id);
+    if (room._mafiaTieBreak) room._mafiaTieBreak.target = swap(room._mafiaTieBreak.target);
+    const eff = room.abilityEffects;
+    if (eff) {
+        ["voteImmune", "nightImmune", "hiddenNames"].forEach((k) => (eff[k] = (eff[k] || []).map(swap)));
+        if (eff.extraVoteWeight[oldId]) {
+            eff.extraVoteWeight[newId] = eff.extraVoteWeight[oldId];
+            delete eff.extraVoteWeight[oldId];
+        }
+    }
+    if (room.lastNight) {
+        room.lastNight.actors.forEach((a) => (a.id = swap(a.id)));
+        room.lastNight.targets.forEach((t) => (t.id = swap(t.id)));
+    }
+}
+
+function resumePayload(room, socketId, isMayor) {
+    const me = room.players.find((p) => p.id === socketId);
+    let phase = room.lastPhase;
+    if (phase && phase.phase === "night" && room.lastNight && me) {
+        const night = room.lastNight;
+        const acted = (room.nightActions[night.step.role] || []).some((a) => a.by === me.id);
+        if (night.actors.some((a) => a.id === me.id) && !acted) {
+            phase = {
+                ...phase,
+                nightInfo: { step: night.step, targets: night.targets, yourTurn: true, night: room.night }
+            };
+        }
+    }
+    if (phase && phase.phase === "night_end" && isMayor) {
+        phase = { phase: "night_end", results: GameFlowManager.resolveNight(room.code, false).filter((r) => !r.privateTo) };
+    }
+    return {
+        isMayor,
+        role: me ? me.role : null,
+        alive: me ? me.alive !== false : true,
+        team: me && ["mafia", "otez", "vor"].includes(me.role) ? mafiaTeam(room) : null,
+        players: publicPlayers(room, room.phase === "ended"),
+        phase: phase || { phase: room.phase, players: publicPlayers(room) }
+    };
+}
+
+function mafiaTeam(room) {
+    return room.players
+        .filter((p) => ["mafia", "otez", "vor"].includes(p.role))
+        .map((p) => ({ id: p.id, name: p.name, role: p.role, roleName: roleName(p.role) }));
+}
+
+// ==========================
+// Сокеты
+// ==========================
+const mayorGraceTimers = {};
+const lobbyGraceTimers = {};
+
+io.on("connection", (socket) => {
+    socket.data.ip = clientIp(socket);
+
+    const me = () => socket.data.accountId || null;
+    const requireMayor = (roomCode) => {
+        const room = RoomManager.getRoom(roomCode);
+        return room && room.mayor?.id === socket.id ? room : null;
+    };
+    const requireAdmin = (cb) => {
+        if (socket.data.isAdmin) return true;
+        ack(cb)({ success: false, message: "Нет доступа" });
+        return false;
+    };
+
+    // ==========================
+    // Присутствие
+    // ==========================
+    on(socket, "presence:hello", (accountId, name) => {
+        accountId = String(accountId || "");
+        if (!isAccountId(accountId)) return;
+
+        const ban = activeBan(accountId);
+        if (ban) {
+            socket.emit("banned", { reason: ban.reason, until: ban.until || null, message: banMessage(ban) });
+        }
+
+        if (socket.data.accountId && socket.data.accountId !== accountId) {
+            const old = presence[socket.data.accountId];
+            if (old) old.sockets.delete(socket.id);
+            socket.leave(`acc:${socket.data.accountId}`);
+        }
+
+        socket.data.accountId = accountId;
+        socket.join(`acc:${accountId}`);
+
+        const prof = ensureProfile(accountId, cleanName(name));
+        if (cleanName(name)) prof.name = cleanName(name);
+        prof.lastSeen = Date.now();
+        store.save();
+
+        const p = presence[accountId] || { sockets: new Set(), roomCode: null, isMayor: false };
+        p.sockets.add(socket.id);
+        p.name = prof.name;
+        presence[accountId] = p;
+
+        notifyFriendsAboutMe(accountId);
+
+        const reqs = requestsFor(accountId);
+        if (reqs.incoming.length) socket.emit("friend:requests", reqs);
+    });
+
+    on(socket, "account:check-name", ({ name, accountId } = {}, cb) => {
+        const owner = nameTakenBy(name);
+        ack(cb)({ available: !owner || owner === String(accountId || "") });
+    });
+
+    on(socket, "presence:search", (id, cb) => {
+        if (typeof cb !== "function") return;
+        cb(presenceStatus(String(id || "").trim()));
+    });
+
+    on(socket, "presence:bulk", (ids, cb) => {
+        if (typeof cb !== "function") return;
+        const list = (Array.isArray(ids) ? ids : []).slice(0, 300).map((id) => presenceStatus(String(id)));
+        cb(list);
+    });
+
+    // ==========================
+    // Публичный профиль
+    // ==========================
+    on(socket, "profile:update", ({ accountId, icon, favoriteRole, name } = {}) => {
+        // Менять можно только свой профиль. Победы клиент больше не присылает —
+        // их считает сервер в конце каждой игры (раньше локальный счётчик
+        // перетирал серверный, и рейтинг "прыгал").
+        if (!me() || String(accountId) !== me()) return;
+        const prof = ensureProfile(me());
+        const nextIcon = icon !== undefined ? cleanIcon(icon) : prof.icon;
+        const nextFav = favoriteRole !== undefined ? (GameFlowManager.ROLE_NAMES[favoriteRole] ? favoriteRole : null) : prof.favoriteRole;
+        const nextName = cleanName(name) || prof.name;
+        if (nextIcon === prof.icon && nextFav === prof.favoriteRole && nextName === prof.name) return;
+        prof.icon = nextIcon;
+        prof.favoriteRole = nextFav;
+        prof.name = nextName;
+        store.save();
+        notifyFriendsAboutMe(me());
+        socket.emit("profile:changed", presenceStatus(me()));
+    });
+
+    on(socket, "profile:get", (accountId, cb) => {
+        if (typeof cb !== "function") return;
+        cb(presenceStatus(String(accountId || "")));
+    });
+
+    // Оставлено для старых клиентов: победы теперь начисляет сервер сам
+    on(socket, "profile:register-win", () => {});
+
+    // ==========================
+    // Мировой рейтинг
+    // ==========================
+    on(socket, "leaderboard:get", (opts, cb) => {
+        if (typeof opts === "function") {
+            cb = opts;
+            opts = {};
+        }
+        if (typeof cb !== "function") return;
+        const all = Object.entries(db.accountProfiles)
+            .filter(([, p]) => (p.wins || 0) > 0 || (p.games || 0) > 0)
+            .map(([id, p]) => ({
+                id,
+                name: p.name || `Игрок #${id}`,
+                icon: p.icon || null,
+                favoriteRole: p.favoriteRole || null,
+                wins: p.wins || 0,
+                games: Math.max(p.games || 0, p.wins || 0),
+                mvp: p.mvp || 0,
+                online: isOnline(id)
+            }))
+            .sort((a, b) => b.wins - a.wins || b.mvp - a.mvp || a.games - b.games || a.name.localeCompare(b.name));
+        all.forEach((p, i) => (p.rank = i + 1));
+        const myId = me();
+        cb({
+            list: all.slice(0, 100),
+            me: myId ? all.find((p) => p.id === myId) || null : null,
+            total: all.length
+        });
+    });
+
+    // ==========================
+    // Друзья
+    // ==========================
+    function requestFriend({ toAccountId } = {}, cb) {
+        const done = ack(cb);
+        const from = me();
+        const to = String(toAccountId || "");
+        if (!from) return done({ success: false, message: "Сначала войдите в аккаунт" });
+        if (!isAccountId(to)) return done({ success: false, message: "Некорректный ID" });
+        if (to === from) return done({ success: false, message: "Нельзя добавить себя" });
+        if (activeBan(from)) return done({ success: false, message: "Вы заблокированы" });
+        if (!profileOf(to)) return done({ success: false, message: "Игрок с таким ID не найден" });
+        if (areFriends(from, to)) return done({ success: true, status: "friends", friend: friendCard(to) });
+        if ((db.friends[from] || []).length >= MAX_FRIENDS) {
+            return done({ success: false, message: "Слишком много друзей" });
+        }
+
+        // Встречная заявка уже есть — сразу дружим
+        if (hasRequest(to, from)) {
+            makeFriends(from, to);
+            emitToAccount(to, "friend:accepted", friendCard(from));
+            emitToAccount(from, "friend:accepted", friendCard(to));
+            return done({ success: true, status: "friends", friend: friendCard(to) });
+        }
+
+        if (hasRequest(from, to)) return done({ success: true, status: "sent" });
+
+        if (!db.friendRequests[to]) db.friendRequests[to] = [];
+        db.friendRequests[to].push({ from, at: Date.now() });
+        store.save();
+
+        emitToAccount(to, "friend:request-incoming", { ...friendCard(from), at: Date.now() });
+        done({ success: true, status: "sent", delivered: isOnline(to) });
+    }
+
+    on(socket, "friend:request", requestFriend);
+    // Совместимость со старым клиентом: "Дружить" теперь отправляет заявку
+    on(socket, "friend:add", requestFriend);
+
+    on(socket, "friend:respond", ({ fromAccountId, accept } = {}, cb) => {
+        const done = ack(cb);
+        const myId = me();
+        const from = String(fromAccountId || "");
+        if (!myId || !hasRequest(from, myId)) {
+            return done({ success: false, message: "Заявка не найдена" });
+        }
+        if (accept) {
+            makeFriends(myId, from);
+            emitToAccount(from, "friend:accepted", friendCard(myId));
+            return done({ success: true, friend: friendCard(from) });
+        }
+        dropRequest(from, myId);
+        store.save();
+        emitToAccount(from, "friend:declined", { id: myId });
+        done({ success: true });
+    });
+
+    on(socket, "friend:cancel", ({ toAccountId } = {}, cb) => {
+        const myId = me();
+        if (myId) {
+            dropRequest(myId, String(toAccountId || ""));
+            store.save();
+            emitToAccount(String(toAccountId || ""), "friend:request-cancelled", { id: myId });
+        }
+        ack(cb)({ success: true });
+    });
+
+    on(socket, "friend:requests", (cb) => {
+        if (typeof cb !== "function") return;
+        cb(me() ? requestsFor(me()) : { incoming: [], outgoing: [] });
+    });
+
+    on(socket, "friend:remove", ({ friendId } = {}, cb) => {
+        const myId = me();
+        const other = String(friendId || "");
+        if (!myId) return ack(cb)({ success: false });
+        db.friends[myId] = (db.friends[myId] || []).filter((id) => id !== other);
+        db.friends[other] = (db.friends[other] || []).filter((id) => id !== myId);
+        store.save();
+        emitToAccount(other, "friend:removed", { byAccountId: myId });
+        ack(cb)({ success: true });
+    });
+
+    on(socket, "friend:get-list", (accountId, cb) => {
+        if (typeof accountId === "function") {
+            cb = accountId;
+            accountId = me();
+        }
+        if (typeof cb !== "function") return;
+        const id = me() || String(accountId || "");
+        cb((db.friends[id] || []).map(friendCard));
+    });
+
+    // Пригласить друга в свою комнату — приходит уведомление, вход без
+    // подтверждения мэра (приглашение уже согласовано).
+    on(socket, "friend:invite", ({ toAccountId, roomCode } = {}, cb) => {
+        const done = ack(cb);
+        const myId = me();
+        const room = RoomManager.getRoom(roomCode);
+        if (!myId || !room) return done({ success: false, message: "Комната не найдена" });
+        const inRoom = room.mayor.id === socket.id || room.players.some((p) => p.id === socket.id);
+        if (!inRoom) return done({ success: false, message: "Вы не в этой комнате" });
+        if (room.started) return done({ success: false, message: "Игра уже идёт" });
+        if (!areFriends(myId, String(toAccountId))) return done({ success: false, message: "Можно пригласить только друга" });
+        if (!isOnline(String(toAccountId))) return done({ success: false, message: "Друг сейчас не в сети" });
+        room.invited = room.invited || {};
+        room.invited[String(toAccountId)] = Date.now();
+        emitToAccount(String(toAccountId), "friend:invite", {
+            from: friendCard(myId),
+            roomCode: room.code
+        });
+        done({ success: true });
+    });
+
+    // Постучаться в комнату друга — мэр получает запрос
+    on(socket, "friend:knock", ({ roomCode } = {}, cb) => {
+        const done = ack(cb);
+        const myId = me();
+        const room = RoomManager.getRoom(roomCode);
+        if (!room || !room.mayor?.id) return done({ success: false, message: "Комната не найдена" });
+        if (room.started) return done({ success: false, message: "Игра уже идёт — дождитесь окончания" });
+        if (!myId) return done({ success: false, message: "Сначала войдите в аккаунт" });
+        io.to(room.mayor.id).emit("friend:incoming-request", {
+            requesterSocketId: socket.id,
+            requesterAccountId: myId,
+            requesterName: presence[myId]?.name || `Игрок #${myId}`,
+            requesterIcon: profileOf(myId)?.icon || null,
+            roomCode: room.code
+        });
+        done({ success: true });
+    });
+
+    on(socket, "friend:mayor-response", ({ roomCode, requesterSocketId, requesterAccountId, accepted } = {}) => {
+        const room = requireMayor(roomCode);
+        if (!room) return;
+        if (accepted && requesterAccountId) {
+            room.invited = room.invited || {};
+            room.invited[String(requesterAccountId)] = Date.now();
+        }
+        io.to(requesterSocketId).emit("friend:join-decision", { accepted: !!accepted, roomCode: room.code });
+    });
+
+    // ==========================
+    // Способности (10 сек окно в начале дня/ночи)
+    // ==========================
+    on(socket, "ability:activate", ({ roomCode, abilityId, targetId } = {}, cb) => {
+        const done = ack(cb);
+        const room = RoomManager.getRoom(roomCode);
+        if (!room) return done({ success: false, message: "Комната не найдена" });
+        if (room.abilitiesEnabled === false) {
+            return done({ success: false, message: "Мэр запретил способности в этой игре" });
+        }
+        const def = ABILITY_DEFS[abilityId];
+        if (!def) return done({ success: false, message: "Неизвестная способность" });
+        if (!room.abilityWindow || Date.now() > room.abilityWindow.expiresAt) {
+            return done({ success: false, message: "Окно активации закрыто" });
+        }
+        if (room.abilityWindow.phase !== def.type) {
+            return done({ success: false, message: "Сейчас нельзя использовать эту способность" });
+        }
+        const self = room.players.find((p) => p.id === socket.id && p.alive !== false);
+        if (!self) return done({ success: false, message: "Недоступно" });
+        if (def.needsTarget && !targetId) return done({ success: false, message: "Нужна цель" });
+
+        const eff = room.abilityEffects;
+        let info = null;
+        switch (abilityId) {
+            case "voice_change":
+                eff.hiddenNames.push(socket.id);
+                break;
+            case "extra_vote":
+                eff.extraVoteWeight[socket.id] = (eff.extraVoteWeight[socket.id] || 1) + 1;
+                break;
+            case "vote_immunity":
+                eff.voteImmune.push(socket.id);
+                break;
+            case "reveal_faction": {
+                const t = room.players.find((p) => p.id === targetId && p.alive !== false);
+                if (!t) return done({ success: false, message: "Цель не найдена" });
+                info = `${t.name}: фракция «${FACTION_LABELS[GameFlowManager.ROLE_CATEGORY[t.role]] || "неизвестно"}»`;
+                break;
+            }
+            case "night_immortality":
+                eff.nightImmune.push(socket.id);
+                break;
+            case "reveal_role": {
+                const t = room.players.find((p) => p.id === targetId && p.alive !== false);
+                if (!t) return done({ success: false, message: "Цель не найдена" });
+                info = `${t.name}: роль «${roleName(t.role)}»`;
+                break;
+            }
+            default:
+                return done({ success: false, message: "Неизвестная способность" });
+        }
+        done({ success: true, info });
+    });
+
+    // ==========================
+    // Комнаты
+    // ==========================
+    on(socket, "create-room", (mayorName, avatar, accountId, cb) => {
+        if (typeof accountId === "function") {
+            cb = accountId;
+            accountId = null;
+        }
+        const done = ack(cb);
+        const accId = isAccountId(String(accountId || "")) ? String(accountId) : null;
+        const ban = activeBan(accId);
+        if (ban) return done({ success: false, message: banMessage(ban) });
+
+        const name = cleanName(mayorName) || "Мэр";
+        const room = RoomManager.createRoom(socket, name, cleanIcon(avatar) || "/avatars/avatar1.svg", accId);
+        db.stats.roomsCreated = (db.stats.roomsCreated || 0) + 1;
+        store.save();
+        setPresenceRoom(accId, room.code, true);
+
+        const response = {
+            success: true,
+            roomCode: room.code,
+            mayor: publicMayor(room),
+            players: lobbyPlayers(room)
+        };
+        if (typeof cb === "function") cb(response);
+        else socket.emit("room-created", response);
+        console.log(`👑 Создана комната ${room.code}`);
+    });
+
+    on(socket, "join-room", (roomCode, playerName, avatar, accountId, cb) => {
+        if (typeof accountId === "function") {
+            cb = accountId;
+            accountId = null;
+        }
+        const done = ack(cb);
+        const code = String(roomCode || "").trim().toUpperCase();
+        const accId = isAccountId(String(accountId || "")) ? String(accountId) : null;
+        const ban = activeBan(accId);
+        if (ban) return done({ success: false, message: banMessage(ban) });
+
+        const result = RoomManager.joinRoom(socket, code, {
+            name: cleanName(playerName) || "Игрок",
+            avatar: cleanIcon(avatar) || "/avatars/avatar1.svg",
+            accountId: accId
+        });
+        if (!result.success) return done(result);
+
+        const r = result.room;
+        const oldId = result.oldId || null;
+        const amMayor = r.mayor.id === socket.id;
+        if (result.reconnected) remapSocketId(r, oldId, socket.id);
+
+        if (lobbyGraceTimers[oldId]) {
+            clearTimeout(lobbyGraceTimers[oldId]);
+            delete lobbyGraceTimers[oldId];
+        }
+        if (amMayor && mayorGraceTimers[code]) {
+            clearTimeout(mayorGraceTimers[code]);
+            delete mayorGraceTimers[code];
+            io.to(code).emit("mayor-reconnected");
+            console.log(`👑 Мэр переподключился, комната ${code} остаётся открытой`);
+        }
+
+        setPresenceRoom(accId, code, amMayor);
+        if (r.invited && accId) delete r.invited[accId];
+
+        broadcastLobby(r);
+        io.to(code).emit("mayor-updated", publicMayor(r));
+
+        done({
+            success: true,
+            roomCode: code,
+            players: lobbyPlayers(r),
+            mayor: publicMayor(r),
+            isMayor: amMayor,
+            started: !!r.started
+        });
+
+        // Вернулся посреди игры — сразу возвращаем его на текущий экран
+        if (r.started && result.reconnected) {
+            socket.emit("resume-game", resumePayload(r, socket.id, amMayor));
+        }
+    });
+
+    function leaveRoom(roomCode, reason) {
+        const room = RoomManager.getRoom(roomCode);
         if (!room) return;
 
+        if (room.mayor?.id === socket.id) {
+            io.to(roomCode).emit("room-closed", { reason: reason || "Мэр закрыл комнату" });
+            [room.mayor, ...room.players].forEach((p) => setPresenceRoom(p.accountId, null, false));
+            io.in(roomCode).socketsLeave(roomCode);
+            RoomManager.deleteRoom(roomCode);
+            return;
+        }
+
+        const player = room.players.find((p) => p.id === socket.id);
+        if (!player) return;
+        socket.leave(roomCode);
+        setPresenceRoom(player.accountId, null, false);
+
+        if (room.started && room.phase !== "ended") {
+            // Посреди игры игрок выбывает, но остаётся в списке (для итогов)
+            player.alive = false;
+            player.connected = false;
+            player.left = true;
+            io.to(room.code).emit("game-players", publicPlayers(room));
+            if (!checkWinAndEnd(room)) nudgeNight(room);
+        } else {
+            room.players = room.players.filter((p) => p.id !== socket.id);
+            broadcastLobby(room);
+        }
+    }
+
+    on(socket, "leave-room", (roomCode) => leaveRoom(roomCode));
+
+    on(socket, "kick-player", (roomCode, playerId) => {
+        const room = requireMayor(roomCode);
+        if (!room) return;
+        const player = room.players.find((p) => p.id === playerId);
+        if (!player) return;
+
+        room.players = room.players.filter((p) => p.id !== playerId);
+        setPresenceRoom(player.accountId, null, false);
+        const kicked = io.sockets.sockets.get(playerId);
+        if (kicked) {
+            kicked.leave(room.code);
+            kicked.emit("kicked", { reason: "Вас выгнал мэр" });
+        }
+        broadcastLobby(room);
+    });
+
+    // ==========================
+    // Настройка партии (только мэр)
+    // ==========================
+    on(socket, "setup-roles", (roomCode, roles) => {
+        const room = requireMayor(roomCode);
+        if (!room || room.started) return;
+        const clean = {};
+        Object.entries(roles && typeof roles === "object" ? roles : {}).forEach(([role, n]) => {
+            if (GameFlowManager.ROLE_NAMES[role]) clean[role] = Math.max(0, Math.min(30, Math.floor(Number(n)) || 0));
+        });
+        room.selectedRoles = clean;
+        io.to(roomCode).emit("roles-updated", clean);
+    });
+
+    on(socket, "set-abilities-enabled", (roomCode, enabled) => {
+        const room = requireMayor(roomCode);
+        if (room) room.abilitiesEnabled = !!enabled;
+    });
+
+    on(socket, "set-difficulty", (roomCode, difficulty) => {
+        const room = requireMayor(roomCode);
+        if (room) room.difficulty = difficulty === "hard" ? "hard" : "easy";
+    });
+
+    // Мэр нажал "Начать" — игроки видят экран "Мэр раздаёт роли"
+    on(socket, "lobby-configuring", (roomCode) => {
+        const room = requireMayor(roomCode);
+        if (!room || room.started) return;
+        socket.to(room.code).emit("loading-game");
+    });
+
+    on(socket, "lobby-open", (roomCode) => {
+        const room = requireMayor(roomCode);
+        if (!room || room.started) return;
+        room.phase = "lobby";
+        io.to(roomCode).emit("lobby-open");
+    });
+
+    on(socket, "set-decoration", (roomCode, decorationId) => {
+        const room = RoomManager.getRoom(roomCode);
+        if (!room) return;
+        const deco = decorationId ? String(decorationId).slice(0, 40) : null;
+        if (room.mayor?.id === socket.id) {
+            room.mayor.decoration = deco;
+            io.to(roomCode).emit("mayor-updated", publicMayor(room));
+            return;
+        }
+        const player = room.players.find((p) => p.id === socket.id);
+        if (!player) return;
+        player.decoration = deco;
+        broadcastLobby(room);
+    });
+
+    on(socket, "send-emoji", (roomCode, emojiId) => {
+        const room = RoomManager.getRoom(roomCode);
+        if (!room) return;
+        if (!room.players.some((p) => p.id === socket.id) && room.mayor?.id !== socket.id) return;
+        const now = Date.now();
+        if (socket.data.lastEmojiAt && now - socket.data.lastEmojiAt < 800) return;
+        socket.data.lastEmojiAt = now;
+        io.to(roomCode).emit("emoji-sent", { playerId: socket.id, emojiId: String(emojiId || "").slice(0, 40) });
+    });
+
+    on(socket, "player-ready", (roomCode) => {
+        const room = RoomManager.getRoom(roomCode);
+        if (!room || room.started) return;
+        const player = room.players.find((p) => p.id === socket.id);
+        if (!player) return;
+
+        player.ready = !player.ready;
+        broadcastLobby(room);
+
+        const everyoneReady = room.players.length > 0 && room.players.every((p) => p.ready);
+        if (everyoneReady) io.to(room.mayor.id).emit("everyone-ready");
+    });
+
+    // ==========================
+    // Игра
+    // ==========================
+    on(socket, "start-game", (roomCode) => {
+        const room = requireMayor(roomCode);
+        if (!room || room.started) return;
+        // Отключившиеся гости не должны получить роль
+        room.players = room.players.filter((p) => p.connected !== false);
+        if (room.players.length < 1) {
+            socket.emit("game-error", { message: "В комнате нет игроков" });
+            return;
+        }
+
+        GameFlowManager.startGame(roomCode, new Set(Object.keys(disabledRoles())));
+
+        const team = mafiaTeam(room);
         room.players.forEach((p) => {
             io.to(p.id).emit("your-role", p.role);
+            if (["mafia", "otez", "vor"].includes(p.role)) io.to(p.id).emit("your-team", team);
         });
 
-        // Роли намеренно не отправляются мэру — он не должен знать,
-        // кто есть кто, как и остальные игроки.
-
-        emitPhase(roomCode, {
-            phase: "waiting_ready",
-            players: publicPlayers(room),
-            readyCount: 0
-        });
-
+        emitPhase(room, { phase: "waiting_ready", players: publicPlayers(room), readyCount: 0 });
         console.log(`🎮 Игра стартовала в ${roomCode}`);
     });
 
-    socket.on("game-player-ready", (roomCode) => {
+    on(socket, "game-player-ready", (roomCode) => {
+        const room = RoomManager.getRoom(roomCode);
         const result = GameFlowManager.setPlayerGameReady(roomCode, socket.id);
-        if (!result.success) return;
+        if (!room || !result.success) return;
 
-        const readyCount = (result.players || []).filter(
-            (p) => p.alive !== false && p.readyForGame
-        ).length;
+        const readyCount = room.players.filter((p) => p.alive !== false && p.readyForGame).length;
+        emitPhase(room, { phase: "waiting_ready", players: publicPlayers(room), readyCount });
 
-        io.to(roomCode).emit("players-updated", result.players);
-        emitPhase(roomCode, {
-            phase: "waiting_ready",
-            players: publicPlayers(RoomManager.getRoom(roomCode)),
-            readyCount
-        });
-
-        if (!result.allReady) return;
-
-        const night = GameFlowManager.beginNight(roomCode);
-        broadcastNight(roomCode, night);
+        if (result.allReady) {
+            RoomManager.addTimer(room, () => {
+                if (room.phase === "waiting_ready") startNight(room);
+            }, 1200);
+        }
     });
 
-    socket.on("night-action", (roomCode, payload) => {
+    on(socket, "begin-night", (roomCode) => {
+        const room = requireMayor(roomCode);
+        if (!room || room.phase !== "waiting_ready") return;
+        startNight(room);
+    });
+
+    on(socket, "night-action", (roomCode, payload, cb) => {
+        const done = ack(cb);
+        const room = RoomManager.getRoom(roomCode);
+        if (!room) return done({ success: false, message: "Комната не найдена" });
         const result = GameFlowManager.submitNightAction(roomCode, socket.id, payload || {});
+        done({ success: result.success, message: result.message });
         if (!result.success) return;
+
+        const step = NIGHT_ORDER.find((s) => s.role === result.step);
+        if (step?.teamAction && room.lastNight) {
+            // Семья видит, кто кого выбрал
+            const by = room.players.find((p) => p.id === socket.id);
+            const target = room.players.find((p) => p.id === payload.targetId);
+            room.lastNight.actors.forEach((a) =>
+                io.to(a.id).emit("team-choice", { name: by?.name, targetName: target?.name, targetId: target?.id })
+            );
+        }
 
         if (result.waiting) {
-            socket.emit("game-phase", {
-                phase: "night_wait",
-                phrase: "Ждём остальных..."
-            });
+            socket.emit("game-phase", { phase: "night_wait", phrase: "Ждём решения остальных..." });
+            const acted = (room.nightActions[result.step] || []).length;
+            io.to(room.mayor.id).emit("night-progress", { acted, total: room.lastNight?.actors.length || 0 });
             return;
         }
-
-        if (result.next) broadcastNight(roomCode, result.next);
+        sendNight(room, result.next);
     });
 
-    socket.on("night-next", (roomCode) => {
-        const next = GameFlowManager.advanceNightStep(roomCode);
-        broadcastNight(roomCode, next);
+    // Мэр пропускает текущий ход (если игрок ушёл от экрана)
+    on(socket, "night-next", (roomCode) => {
+        const room = requireMayor(roomCode);
+        if (!room || room.phase !== "night") return;
+        sendNight(room, GameFlowManager.skipNightStep(roomCode));
     });
 
-    socket.on("begin-night", (roomCode) => {
-        const room = RoomManager.getRoom(roomCode);
-        if (!room || room.mayor?.id !== socket.id) return;
-
-        const night = GameFlowManager.beginNight(roomCode);
-        if (room.abilitiesEnabled !== false) {
-            openAbilityWindow(room, "night");
-            io.to(roomCode).emit("ability-window", room.abilityWindow);
-        }
-        broadcastNight(roomCode, night);
-    });
-
-    socket.on("mayor-morning", (roomCode) => {
-        const room = RoomManager.getRoom(roomCode);
-        if (!room || room.mayor?.id !== socket.id) return;
+    on(socket, "mayor-morning", (roomCode) => {
+        const room = requireMayor(roomCode);
+        if (!room || room.phase !== "night_end") return;
 
         const results = GameFlowManager.resolveNight(roomCode, true);
+        const isEasy = room.difficulty !== "hard";
 
         results
             .filter((r) => r.privateTo)
-            .forEach((r) => {
-                io.to(r.privateTo).emit("private-info", {
-                    text: r.type === "check" || r.type === "link"
-                        ? `${r.name}: роль ${r.role}`
-                        : r.text
-                });
-            });
+            .forEach((r) => r.privateTo.forEach((id) => io.to(id).emit("private-info", { text: r.text, type: r.type })));
 
         results
             .filter((r) => r.type === "death")
-            .forEach((r) => {
+            .forEach((r) =>
                 io.to(r.playerId).emit("you-died", {
-                    reason: r.text || "Вас убили этой ночью.",
+                    reason: "Вас убили этой ночью.",
                     killedBy: r.killedBy || "night"
-                });
-            });
+                })
+            );
 
-        const isEasy = room.difficulty !== "hard";
-        const formattedResults = results
-            .filter(
-                (r) => !r.privateTo || r.type === "death" || r.type === "saved" || r.type === "block"
-            )
+        const publicResults = results
+            .filter((r) => !r.privateTo)
             .map((r) => {
                 if (r.type !== "death") return r;
                 if (isEasy) {
-                    const roleName = ROLE_META[r.role]?.name || r.role;
-                    return { ...r, text: `${r.name} погиб этой ночью. Роль: ${roleName}` };
+                    return { ...r, text: `${r.name} погиб этой ночью. Роль: ${roleName(r.role)}` };
                 }
-                const killerLabel = KILLER_LABELS[r.killedBy] || "неизвестного";
                 return {
                     ...r,
                     role: undefined,
-                    text: `${r.name} погиб этой ночью от руки ${killerLabel}.`
+                    text: `${r.name} погиб этой ночью от руки ${KILLER_LABELS[r.killedBy] || "неизвестного"}.`
                 };
             });
 
-        emitPhase(roomCode, {
-            phase: "morning",
-            results: formattedResults,
-            players: publicPlayers(room)
-        });
-
-        const win = GameFlowManager.checkWin(roomCode);
-        if (win) {
-            endGame(roomCode, win);
-        }
+        emitPhase(room, { phase: "morning", day: room.day, results: publicResults, players: publicPlayers(room) });
+        checkWinAndEnd(room);
     });
 
-    socket.on("begin-voting", (roomCode) => {
-        const room = RoomManager.getRoom(roomCode);
-        if (!room || room.mayor?.id !== socket.id) return;
+    on(socket, "begin-voting", (roomCode) => {
+        const room = requireMayor(roomCode);
+        if (!room || room.phase !== "morning") return;
+        room.phase = "voting_loading";
 
-        emitPhase(roomCode, {
-            phase: "loading",
-            loadingText: "Начинается голосование"
-        });
-
-        setTimeout(() => {
+        emitPhase(room, { phase: "loading", loadingText: "Начинается голосование" });
+        RoomManager.addTimer(room, () => {
             const vote = GameFlowManager.beginVoting(roomCode);
-            if (room.abilitiesEnabled !== false) {
-                openAbilityWindow(room, "day");
-                io.to(roomCode).emit("ability-window", room.abilityWindow);
-            }
-            emitPhase(roomCode, { phase: "voting", vote });
+            if (room.abilitiesEnabled !== false) openAbilityWindow(room, "day");
+            emitPhase(room, { phase: "voting", vote });
+            scheduleVoteEnd(room);
         }, 3000);
     });
 
-    socket.on("cast-vote", (roomCode, targetId) => {
-        GameFlowManager.castVote(roomCode, socket.id, targetId);
+    on(socket, "cast-vote", (roomCode, targetId, cb) => {
+        const done = ack(cb);
+        const room = RoomManager.getRoom(roomCode);
+        if (!room) return done({ success: false });
+        const res = GameFlowManager.castVote(roomCode, socket.id, targetId);
+        done(res);
+        if (!res.success) return;
+        io.to(roomCode).emit("vote-progress", { votedCount: res.votedCount, votersTotal: res.votersTotal });
+        if (res.allVoted) {
+            const round = room.voteRound;
+            RoomManager.addTimer(room, () => {
+                if (room.phase === "voting" && room.voteRound === round) finishVoting(room);
+            }, 1500);
+        }
     });
 
-    socket.on("finish-voting", (roomCode) => {
-        const room = RoomManager.getRoom(roomCode);
+    on(socket, "finish-voting", (roomCode) => {
+        const room = requireMayor(roomCode);
+        if (!room || room.phase !== "voting") return;
+        finishVoting(room);
+    });
+
+    on(socket, "mayor-execute", (roomCode, pardon) => {
+        const room = requireMayor(roomCode);
         if (!room) return;
-
-        const voteResult = GameFlowManager.finishVoting(roomCode);
-        if (!voteResult) return;
-
-        if (voteResult.type === "pending") {
-            emitPhase(roomCode, {
-                phase: "vote_pending",
-                candidate: voteResult.candidate,
-                voteResult
-            });
-            return;
-        }
-
-        if (voteResult.type === "runoff") {
-            const snap = GameFlowManager.votingSnapshot(room);
-            emitPhase(roomCode, {
-                phase: "voting",
-                vote: snap,
-                voteResult
-            });
-            return;
-        }
-
-        emitPhase(roomCode, {
-            phase: "vote_result",
-            voteResult
-        });
-
-        setTimeout(() => {
-            const win = GameFlowManager.checkWin(roomCode);
-            if (win) {
-                endGame(roomCode, win);
-                return;
-            }
-
-            emitPhase(roomCode, {
-                phase: "loading",
-                loadingText: "Приближается ночь"
-            });
-
-            setTimeout(() => {
-                const night = GameFlowManager.beginNight(roomCode);
-                broadcastNight(roomCode, night);
-            }, 3000);
-        }, 4000);
-    });
-
-    socket.on("mayor-execute", (roomCode) => {
-        const room = RoomManager.getRoom(roomCode);
-        if (!room || room.mayor?.id !== socket.id) return;
-
-        const executed = GameFlowManager.executePending(roomCode);
+        const executed = GameFlowManager.executePending(roomCode, pardon === true);
         if (!executed) return;
 
+        if (executed.pardoned) {
+            emitPhase(room, {
+                phase: "vote_result",
+                voteResult: { type: "pardoned", pardoned: { id: executed.id, name: executed.name } },
+                players: publicPlayers(room)
+            });
+            afterDay(room);
+            return;
+        }
+
         const isEasy = room.difficulty !== "hard";
-        const roleName = ROLE_META[executed.role]?.name || executed.role;
-        const executedText = isEasy
-            ? `${executed.name} казнён! Роль: ${roleName}`
-            : `Игрок ${executed.name} казнён!`;
+        io.to(executed.id).emit("you-died", { reason: "Город приговорил вас к казни.", killedBy: "execution" });
 
-        io.to(executed.id).emit("you-died", {
-            reason: "Город приговорил вас к казни.",
-            killedBy: "execution"
-        });
-
-        emitPhase(roomCode, {
+        emitPhase(room, {
             phase: "vote_result",
             voteResult: {
                 type: "executed",
@@ -1661,112 +1368,292 @@ io.on("connection", (socket) => {
                     id: executed.id,
                     name: executed.name,
                     role: isEasy ? executed.role : undefined,
-                    text: executedText
+                    roleName: isEasy ? roleName(executed.role) : undefined
                 }
             },
             players: publicPlayers(room)
         });
-
-        setTimeout(() => {
-            const win = GameFlowManager.checkWin(roomCode);
-            if (win) {
-                endGame(roomCode, win);
-                return;
-            }
-
-            emitPhase(roomCode, {
-                phase: "loading",
-                loadingText: "Приближается ночь"
-            });
-
-            setTimeout(() => {
-                const night = GameFlowManager.beginNight(roomCode);
-                broadcastNight(roomCode, night);
-            }, 3000);
-        }, 4000);
+        afterDay(room);
     });
 
-    socket.on("mayor-kill", (roomCode, targetId, reason) => {
+    on(socket, "mayor-kill", (roomCode, targetId, reason) => {
+        const room = requireMayor(roomCode);
+        if (!room || !room.started || room.phase === "ended") return;
+        const text = cleanText(reason, 140);
+        if (!text) return;
+
+        const killed = GameFlowManager.mayorKill(roomCode, targetId, text);
+        if (!killed) return;
+        io.to(killed.id).emit("you-died", { reason: text, killedBy: "mayor" });
+        io.to(roomCode).emit("game-toast", { text: `Мэр устранил игрока ${killed.name}. Причина: ${text}` });
+
+        if (room.votes) delete room.votes[killed.id];
+        if (room.voteCandidates) room.voteCandidates = room.voteCandidates.filter((id) => id !== killed.id);
+        if (room.pendingExecution?.id === killed.id) room.pendingExecution = null;
+        io.to(roomCode).emit("game-players", publicPlayers(room));
+        if (!checkWinAndEnd(room)) nudgeNight(room);
+    });
+
+    on(socket, "mayor-force-win", (roomCode, side, reason) => {
+        const room = requireMayor(roomCode);
+        if (!room || !room.started || room.phase === "ended") return;
+        const s = ["town", "mafia", "neutral"].includes(side) ? side : "town";
+        endGame(room, { winner: s, label: WIN_LABELS[s], reason: cleanText(reason, 140) || "Решение мэра" });
+    });
+
+    // "Играть снова" — только мэр. Возвращает всех к чистому лобби комнаты.
+    on(socket, "play-again", (roomCode, cb) => {
+        const done = ack(cb);
         const room = RoomManager.getRoom(roomCode);
-        if (!room || room.mayor?.id !== socket.id) return;
-        if (!reason) return;
-
-        const killed = GameFlowManager.mayorKill(roomCode, targetId, reason);
-
-        if (killed?.id) {
-            io.to(killed.id).emit("you-died", {
-                reason: reason || "Решением мэра вы устранены из игры."
-            });
+        if (!room) return done({ success: false, message: "Комната не найдена" });
+        if (room.mayor?.id !== socket.id) {
+            return done({ success: false, message: "Сервер не распознал вас как мэра этой комнаты" });
         }
+        const fresh = RoomManager.resetForReplay(roomCode);
+        if (!fresh) return done({ success: false, message: "Не удалось сбросить комнату" });
 
-        emitPhase(roomCode, {
-            phase: room.phase,
-            players: publicPlayers(room)
+        io.to(roomCode).emit("game-reset", { players: lobbyPlayers(fresh), mayor: publicMayor(fresh) });
+        done({ success: true });
+    });
+
+    // ==========================
+    // Админ-панель (все действия проверяются на сервере)
+    // ==========================
+    on(socket, "admin:login", (password, cb) => {
+        const done = ack(cb);
+        const ip = socket.data.ip;
+        if (tooManyAttempts(ip)) {
+            return done({ success: false, message: "Слишком много попыток. Подождите 10 минут." });
+        }
+        if (!passwordMatches(password)) {
+            loginAttempts.get(ip).push(Date.now());
+            return done({ success: false, message: "Неверный пароль" });
+        }
+        socket.data.isAdmin = true;
+        done({ success: true, token: issueAdminToken() });
+    });
+
+    on(socket, "admin:resume", (token, cb) => {
+        const ok = validAdminToken(token);
+        socket.data.isAdmin = ok;
+        ack(cb)({ success: ok });
+    });
+
+    on(socket, "admin:logout", (token) => {
+        if (typeof token === "string") delete db.adminTokens[token];
+        store.save();
+        socket.data.isAdmin = false;
+    });
+
+    on(socket, "admin:overview", (cb) => {
+        if (!requireAdmin(cb)) return;
+        const rooms = RoomManager.getAllRooms();
+        const mem = process.memoryUsage();
+        cb({
+            success: true,
+            online: onlineCount(),
+            sockets: io.engine.clientsCount,
+            rooms: rooms.length,
+            inGame: rooms.filter((r) => r.started).reduce((n, r) => n + r.players.length, 0),
+            players: Object.keys(db.accountProfiles).length,
+            gamesPlayed: db.stats.gamesPlayed || 0,
+            roomsCreated: db.stats.roomsCreated || 0,
+            bans: Object.keys(db.bans).length,
+            uptimeSec: Math.round((Date.now() - startedAt) / 1000),
+            memoryMb: Math.round(mem.rss / 1024 / 1024),
+            persistent: !!process.env.DATA_DIR,
+            roomList: rooms.map(roomSummary)
         });
     });
 
-    socket.on("mayor-force-win", (roomCode, side, reason) => {
-        const room = RoomManager.getRoom(roomCode);
-        if (!room || room.mayor?.id !== socket.id) return;
-
-        GameFlowManager.mayorForceWin(roomCode, side, reason);
-        endGame(roomCode, { winner: side, label: side, reason });
+    on(socket, "admin:player", (accountId, cb) => {
+        if (!requireAdmin(cb)) return;
+        const id = String(accountId || "").trim();
+        if (!profileOf(id)) return cb({ success: false, message: "Игрок с таким ID не найден" });
+        cb({
+            success: true,
+            player: { ...presenceStatus(id), friends: (db.friends[id] || []).length, lastSeen: profileOf(id).lastSeen || null },
+            ban: activeBan(id)
+        });
     });
 
-    // "Играть снова" — только мэр. Возвращает ВСЕХ (мэра, живых и уже
-    // погибших/вышедших в лобби игроков) к чистому лобби этой же комнаты.
-    socket.on("play-again", (roomCode, ack) => {
-        console.log(`[play-again] запрос от ${socket.id}, комната ${roomCode}`);
+    on(socket, "admin:search", (query, cb) => {
+        if (!requireAdmin(cb)) return;
+        const q = String(query || "").trim().toLowerCase();
+        if (!q) return cb({ success: true, list: [] });
+        const list = Object.entries(db.accountProfiles)
+            .filter(([id, p]) => id.includes(q) || (p.name || "").toLowerCase().includes(q))
+            .slice(0, 30)
+            .map(([id]) => ({ ...presenceStatus(id), banned: !!activeBan(id) }));
+        cb({ success: true, list });
+    });
 
-        const room = RoomManager.getRoom(roomCode);
-        if (!room) {
-            console.log(`[play-again] комната ${roomCode} не найдена`);
-            if (typeof ack === "function") {
-                ack({ success: false, message: "Комната не найдена" });
+    on(socket, "admin:ban", ({ accountId, duration, reason } = {}, cb) => {
+        if (!requireAdmin(cb)) return;
+        const id = String(accountId || "").trim();
+        const why = cleanText(reason, 140);
+        if (!profileOf(id)) return cb({ success: false, message: "Игрок с таким ID не найден" });
+        if (!why) return cb({ success: false, message: "Укажите причину" });
+        const ms = { "1h": 3600e3, "1d": 86400e3, "7d": 7 * 86400e3, "30d": 30 * 86400e3 }[duration];
+        db.bans[id] = {
+            reason: why,
+            duration: ms ? duration : "permanent",
+            until: ms ? Date.now() + ms : null,
+            at: Date.now(),
+            name: profileOf(id).name
+        };
+        store.save();
+
+        const ban = db.bans[id];
+        emitToAccount(id, "banned", { reason: ban.reason, until: ban.until, message: banMessage(ban) });
+        // Выкидываем из комнаты, если он сейчас в лобби
+        const roomCode = presence[id]?.roomCode;
+        const room = roomCode && RoomManager.getRoom(roomCode);
+        if (room && !room.started) {
+            const p = room.players.find((x) => x.accountId === id);
+            if (p) {
+                room.players = room.players.filter((x) => x !== p);
+                io.to(p.id).emit("kicked", { reason: "Вы заблокированы администратором" });
+                io.sockets.sockets.get(p.id)?.leave(room.code);
+                broadcastLobby(room);
             }
+        }
+        cb({ success: true, message: `${profileOf(id).name} заблокирован` });
+    });
+
+    on(socket, "admin:unban", (accountId, cb) => {
+        if (!requireAdmin(cb)) return;
+        const id = String(accountId || "");
+        delete db.bans[id];
+        store.save();
+        emitToAccount(id, "unbanned", {});
+        cb({ success: true, message: "Блокировка снята" });
+    });
+
+    on(socket, "admin:bans", (cb) => {
+        if (!requireAdmin(cb)) return;
+        Object.keys(db.bans).forEach(activeBan);
+        cb({ success: true, list: Object.entries(db.bans).map(([id, b]) => ({ id, ...b })) });
+    });
+
+    on(socket, "admin:give", ({ accountId, amount } = {}, cb) => {
+        if (!requireAdmin(cb)) return;
+        const id = String(accountId || "").trim();
+        const value = Math.floor(Number(amount));
+        if (!value || value < 1 || value > 1000000) return cb({ success: false, message: "Некорректная сумма" });
+        if (!isOnline(id)) return cb({ success: false, message: "Игрок не в сети — Токены можно выдать только онлайн" });
+        emitToAccount(id, "you-received-currency", { amount: value, from: "admin" });
+        cb({ success: true, message: `Выдано ${value} Токенов` });
+    });
+
+    on(socket, "admin:close-room", (code, cb) => {
+        if (!requireAdmin(cb)) return;
+        const room = RoomManager.getRoom(code);
+        if (!room) return cb({ success: false, message: "Комната не найдена" });
+        io.to(code).emit("room-closed", { reason: "Комната закрыта администратором" });
+        [room.mayor, ...room.players].forEach((p) => setPresenceRoom(p.accountId, null, false));
+        io.in(code).socketsLeave(code);
+        RoomManager.deleteRoom(code);
+        cb({ success: true, message: `Комната ${code} закрыта` });
+    });
+
+    on(socket, "admin:disable-role", ({ roleId, duration } = {}, cb) => {
+        if (!requireAdmin(cb)) return;
+        if (!GameFlowManager.ROLE_NAMES[roleId]) return cb({ success: false, message: "Неизвестная роль" });
+        const ms = { "1h": 3600e3, "1d": 86400e3, "7d": 7 * 86400e3 }[duration];
+        db.disabledRoles[roleId] = { until: ms ? Date.now() + ms : null, duration: ms ? duration : "permanent", at: Date.now() };
+        store.save();
+        io.emit("roles:disabled", disabledRoles());
+        cb({ success: true, message: `Роль «${roleName(roleId)}» отключена` });
+    });
+
+    on(socket, "admin:enable-role", (roleId, cb) => {
+        if (!requireAdmin(cb)) return;
+        delete db.disabledRoles[roleId];
+        store.save();
+        io.emit("roles:disabled", disabledRoles());
+        cb({ success: true, message: `Роль «${roleName(roleId)}» снова доступна` });
+    });
+
+    on(socket, "admin:announce", (text, cb) => {
+        if (!requireAdmin(cb)) return;
+        const msg = cleanText(text, 200);
+        if (!msg) return cb({ success: false, message: "Пустое сообщение" });
+        io.emit("announcement", { text: msg, at: Date.now() });
+        cb({ success: true, message: "Объявление отправлено всем онлайн" });
+    });
+
+    on(socket, "roles:get-disabled", (cb) => {
+        if (typeof cb === "function") cb(disabledRoles());
+    });
+
+    // ==========================
+    // Отключение
+    // ==========================
+    on(socket, "disconnect", () => {
+        const accId = socket.data.accountId;
+        if (accId && presence[accId]) {
+            presence[accId].sockets.delete(socket.id);
+            if (presence[accId].sockets.size === 0) {
+                notifyFriendsAboutMe(accId);
+            }
+        }
+
+        const found = RoomManager.markDisconnected(socket.id);
+        if (!found) return;
+        const { room, isMayor, player } = found;
+        const roomCode = room.code;
+
+        if (isMayor) {
+            // Не закрываем комнату сразу — это может быть обычный F5
+            io.to(roomCode).emit("mayor-disconnected", { graceMs: MAYOR_RECONNECT_GRACE_MS });
+            if (mayorGraceTimers[roomCode]) clearTimeout(mayorGraceTimers[roomCode]);
+            mayorGraceTimers[roomCode] = setTimeout(() => {
+                delete mayorGraceTimers[roomCode];
+                const still = RoomManager.getRoom(roomCode);
+                if (still && still.mayor && !still.mayor.connected) {
+                    io.to(roomCode).emit("room-closed", { reason: "Мэр покинул игру. Комната закрыта." });
+                    [still.mayor, ...still.players].forEach((p) => setPresenceRoom(p.accountId, null, false));
+                    io.in(roomCode).socketsLeave(roomCode);
+                    RoomManager.deleteRoom(roomCode);
+                }
+            }, MAYOR_RECONNECT_GRACE_MS);
             return;
         }
 
-        if (room.mayor?.id !== socket.id) {
-            console.log(
-                `[play-again] отклонено: сервер знает мэра как ${room.mayor?.id}, а запрос пришёл от ${socket.id}`
-            );
-            if (typeof ack === "function") {
-                ack({
-                    success: false,
-                    message: "Сервер не распознал вас как мэра этой комнаты"
-                });
-            }
-            return;
-        }
+        broadcastLobby(room);
 
-        const fresh = RoomManager.resetForReplay(roomCode);
-        if (!fresh) {
-            if (typeof ack === "function") {
-                ack({ success: false, message: "Не удалось сбросить комнату" });
-            }
-            return;
-        }
-
-        const payload = fresh.players.map((p) => ({
-            id: p.id,
-            name: p.name,
-            avatar: p.avatar,
-            ready: false,
-            decoration: p.decoration || null
-        }));
-
-        io.to(roomCode).emit("game-reset", { players: payload });
-        console.log(`[play-again] комната ${roomCode} сброшена, разослано ${payload.length} игрокам`);
-
-        if (typeof ack === "function") {
-            ack({ success: true });
+        // В лобби "призраки" мешают старту — убираем, если не вернулся
+        if (!room.started) {
+            const sid = socket.id;
+            lobbyGraceTimers[sid] = setTimeout(() => {
+                delete lobbyGraceTimers[sid];
+                const still = RoomManager.getRoom(roomCode);
+                if (!still || still.started) return;
+                const p = still.players.find((x) => x.id === sid && x.connected === false);
+                if (!p) return;
+                still.players = still.players.filter((x) => x !== p);
+                setPresenceRoom(p.accountId, null, false);
+                broadcastLobby(still);
+            }, LOBBY_RECONNECT_GRACE_MS);
+        } else if (player) {
+            io.to(roomCode).emit("game-players", publicPlayers(room));
         }
     });
 });
 
-const PORT = process.env.PORT || 3001;
+// Последний рубеж: залогировать, но не падать
+process.on("uncaughtException", (err) => console.error("⚠️ uncaughtException:", err));
+process.on("unhandledRejection", (err) => console.error("⚠️ unhandledRejection:", err));
 
+function shutdown() {
+    store.flushNow();
+    process.exit(0);
+}
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
+
+const PORT = process.env.PORT || 3001;
 server.listen(PORT, "0.0.0.0", () => {
     console.log(`🚀 Сервер запущен на порту ${PORT}`);
 });

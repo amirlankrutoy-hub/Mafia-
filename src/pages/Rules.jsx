@@ -2,8 +2,10 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faMoon, faSun, faGavel, faShieldHalved, faArrowRight } from '@fortawesome/free-solid-svg-icons';
+import useSeo from '../hooks/useSeo';
 
 function Rules() {
+  useSeo({ title: 'Правила игры Мафия', description: 'Правила игры «Мафия» онлайн: роли, ночь и день, голосование, мэр-ведущий и условия победы мирных, мафии и нейтралов.', path: '/rules' });
   const rulesList = [
     {
       step: '01',
