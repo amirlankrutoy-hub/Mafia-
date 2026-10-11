@@ -20,7 +20,7 @@ const CORS_ORIGINS = (process.env.CORS_ORIGINS || "")
     .filter(Boolean);
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "121314$admin";
 if (!process.env.ADMIN_PASSWORD) {
-    console.warn("⚠️ ADMIN_PASSWORD не задан — используется пароль по умолчанию. Задайте его в переменных Railway.");
+    console.warn("⚠️ ADMIN_PASSWORD не задан — используется пароль по умолчанию. Задайте переменную ADMIN_PASSWORD на хостинге.");
 }
 
 const ADMIN_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -1461,7 +1461,7 @@ io.on("connection", (socket) => {
             bans: Object.keys(db.bans).length,
             uptimeSec: Math.round((Date.now() - startedAt) / 1000),
             memoryMb: Math.round(mem.rss / 1024 / 1024),
-            persistent: !!process.env.DATA_DIR,
+            persistent: store.persistent(),
             roomList: rooms.map(roomSummary)
         });
     });
@@ -1646,14 +1646,17 @@ io.on("connection", (socket) => {
 process.on("uncaughtException", (err) => console.error("⚠️ uncaughtException:", err));
 process.on("unhandledRejection", (err) => console.error("⚠️ unhandledRejection:", err));
 
-function shutdown() {
-    store.flushNow();
+async function shutdown() {
+    await store.flushNow();
     process.exit(0);
 }
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
 
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, "0.0.0.0", () => {
-    console.log(`🚀 Сервер запущен на порту ${PORT}`);
+// Сначала загружаем данные (из Upstash или файла), потом принимаем игроков
+store.init().finally(() => {
+    server.listen(PORT, "0.0.0.0", () => {
+        console.log(`🚀 Сервер запущен на порту ${PORT}`);
+    });
 });

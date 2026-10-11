@@ -4,7 +4,7 @@ import { io } from "socket.io-client";
 // не трогая код — удобно при смене хостинга или локальном запуске.
 export const SOCKET_URL =
     import.meta.env.VITE_SOCKET_URL ||
-    "https://mafia-server-production-dd33.up.railway.app";
+    "https://mafia-play-server.onrender.com";
 
 export const socket = io(SOCKET_URL, {
     autoConnect: false,

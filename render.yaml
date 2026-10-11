@@ -1,0 +1,25 @@
+# Render Blueprint — игровой сервер Mafia Play (бесплатный тариф).
+# Render → New → Blueprint → выбрать этот репозиторий → Apply.
+services:
+  - type: web
+    name: mafia-play-server
+    runtime: node
+    plan: free
+    region: frankfurt
+    rootDir: server
+    buildCommand: npm ci
+    startCommand: node server.js
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      # Пароль админ-панели — Render спросит его при создании
+      - key: ADMIN_PASSWORD
+        sync: false
+      # Бесплатная база Upstash Redis — чтобы друзья и рейтинг не стирались,
+      # когда бесплатный сервер "засыпает". Render спросит значения при создании.
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false

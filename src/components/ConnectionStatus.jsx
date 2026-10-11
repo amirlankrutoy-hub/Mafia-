@@ -32,7 +32,10 @@ export default function ConnectionStatus() {
     <div className="fixed bottom-4 left-1/2 z-[2500] -translate-x-1/2 toast-in">
       <div className="flex items-center gap-3 rounded-full border border-red-500/40 bg-[#1a0606]/95 px-5 py-2.5 text-sm text-red-200 shadow-2xl backdrop-blur">
         <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-red-500" />
-        Нет связи с сервером — переподключаемся…
+        <span>
+          Подключаемся к серверу…
+          <span className="block text-[11px] text-red-200/60">Если сервер «спал», он проснётся за 30–60 секунд</span>
+        </span>
       </div>
     </div>
   );

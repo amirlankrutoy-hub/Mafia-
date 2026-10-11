@@ -198,8 +198,10 @@ function Overview() {
     <div className="space-y-6">
       {!data.persistent && (
         <div className="rounded-2xl border border-amber-500/40 bg-amber-950/30 p-4 text-sm text-amber-200">
-          ⚠️ Данные сервера (друзья, рейтинг, баны) хранятся во временной папке и пропадут при следующем деплое на
-          Railway. Подключите Volume и задайте переменную <code className="text-amber-100">DATA_DIR</code>.
+          ⚠️ Данные сервера (друзья, рейтинг, баны) хранятся во временной папке и пропадут при перезапуске
+          сервера. Подключите бесплатную базу Upstash Redis — переменные{" "}
+          <code className="text-amber-100">UPSTASH_REDIS_REST_URL</code> и{" "}
+          <code className="text-amber-100">UPSTASH_REDIS_REST_TOKEN</code>.
         </div>
       )}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
