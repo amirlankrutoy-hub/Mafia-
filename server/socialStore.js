@@ -31,7 +31,9 @@ const EMPTY = () => ({
   bans: {},
   disabledRoles: {},
   adminTokens: {},
-  stats: { gamesPlayed: 0, roomsCreated: 0 }
+  orders: {}, // заказы Токенов за звёзды Telegram
+  pendingTopups: {}, // accountId -> [{ orderId, amount }] — ещё не доставлены на сайт
+  stats: { gamesPlayed: 0, roomsCreated: 0, starsEarned: 0, topups: 0 }
 });
 
 let state = EMPTY();

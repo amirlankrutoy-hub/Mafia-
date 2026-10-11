@@ -15,6 +15,7 @@ import ConnectionStatus from './components/ConnectionStatus';
 import ErrorBoundary from './components/ErrorBoundary';
 import GlobalEvents from './components/GlobalEvents';
 import Toaster from './components/Toaster';
+import PaymentSuccess from './components/PaymentSuccess';
 import Ambient from './components/ui/Ambient';
 import LoadingSpinner from './components/LoadingSpinner';
 import { getMyAccount } from './services/accounts';
@@ -138,6 +139,7 @@ function AppRoutes({ account, showModal, handleAccountReady }) {
       {showStory && <StoryIntro onFinish={handleStoryFinish} />}
       <GlobalEvents account={account} />
       <Toaster />
+      <PaymentSuccess />
       <AchievementToast />
       <ConnectionStatus />
     </div>

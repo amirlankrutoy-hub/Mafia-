@@ -136,11 +136,13 @@ export const ADMIN_DECORATION = {
 export const DISCOUNT_UNTIL = new Date("2026-12-01T00:00:00");
 export const DISCOUNT_PERCENT = 15;
 
+// Пакеты Токенов за звёзды Telegram. Настоящие цены задаёт сервер
+// (server/telegram.js) — здесь они только для показа.
 export const COIN_PACKAGES = [
-  { id: "coins_999", amount: 999, basePrice: 7 },
-  { id: "coins_3000", amount: 3000, basePrice: 50 },
-  { id: "coins_7000", amount: 7000, basePrice: 80 },
-  { id: "coins_10000", amount: 10000, basePrice: 100 }
+  { id: "coins_999", amount: 999, stars: 50, basePrice: 1 },
+  { id: "coins_3000", amount: 3000, stars: 100, basePrice: 2 },
+  { id: "coins_7000", amount: 7000, stars: 200, basePrice: 4 },
+  { id: "coins_10000", amount: 10000, stars: 350, basePrice: 7 }
 ];
 
 export function isDiscountActive() {

@@ -8,6 +8,7 @@ const RoomManager = require("./managers/RoomManager");
 const GameFlowManager = require("./managers/GameFlowManager");
 const NIGHT_ORDER = require("./managers/NightOrder");
 const store = require("./socialStore");
+const { createTelegram } = require("./telegram");
 
 // ==========================
 // Настройки (переменные окружения Railway)
@@ -649,6 +650,34 @@ function mafiaTeam(room) {
 }
 
 // ==========================
+// Оплата звёздами Telegram
+// ==========================
+function deliverTopups(accountId) {
+    (db.pendingTopups[accountId] || []).forEach((t) =>
+        emitToAccount(accountId, "topup:success", { orderId: t.orderId, amount: t.amount, stars: t.stars })
+    );
+}
+
+const telegram = createTelegram({
+    db,
+    save: () => store.save(),
+    isAccount: (id) => !!profileOf(id),
+    accountName: (id) => profileOf(id)?.name || `Игрок #${id}`,
+    isBanned: (id) => !!activeBan(id),
+    onPaid: (order) => {
+        // Начисление ждёт подтверждения сайта (topup:ack): если игрок сейчас
+        // не на сайте, Токены придут при следующем входе.
+        if (!db.pendingTopups[order.accountId]) db.pendingTopups[order.accountId] = [];
+        db.pendingTopups[order.accountId].push({ orderId: order.id, amount: order.amount, stars: order.stars });
+        db.stats.starsEarned = (db.stats.starsEarned || 0) + order.stars;
+        db.stats.topups = (db.stats.topups || 0) + 1;
+        store.save();
+        console.log(`⭐ Оплата ${order.stars}⭐ → +${order.amount} Токенов аккаунту #${order.accountId}`);
+        deliverTopups(order.accountId);
+    }
+});
+
+// ==========================
 // Сокеты
 // ==========================
 const mayorGraceTimers = {};
@@ -703,6 +732,7 @@ io.on("connection", (socket) => {
 
         const reqs = requestsFor(accountId);
         if (reqs.incoming.length) socket.emit("friend:requests", reqs);
+        deliverTopups(accountId);
     });
 
     on(socket, "account:check-name", ({ name, accountId } = {}, cb) => {
@@ -1417,6 +1447,35 @@ io.on("connection", (socket) => {
     });
 
     // ==========================
+    // Покупка Токенов за звёзды
+    // ==========================
+    on(socket, "topup:packages", (cb) => {
+        if (typeof cb === "function") cb(telegram.PACKAGES);
+    });
+
+    on(socket, "topup:create", ({ packageId } = {}, cb) => {
+        const done = ack(cb);
+        if (!me()) return done({ success: false, message: "Сначала войдите в аккаунт" });
+        if (activeBan(me())) return done({ success: false, message: "Аккаунт заблокирован" });
+        telegram
+            .createInvoice(me(), String(packageId || ""))
+            .then(done)
+            .catch((err) => {
+                console.error("⚠️ createInvoice:", err.message);
+                done({ success: false, message: "Не удалось создать счёт. Попробуйте позже." });
+            });
+    });
+
+    // Сайт зачислил Токены — убираем из очереди доставки
+    on(socket, "topup:ack", (orderId) => {
+        const list = me() && db.pendingTopups[me()];
+        if (!list) return;
+        db.pendingTopups[me()] = list.filter((t) => t.orderId !== orderId);
+        if (!db.pendingTopups[me()].length) delete db.pendingTopups[me()];
+        store.save();
+    });
+
+    // ==========================
     // Админ-панель (все действия проверяются на сервере)
     // ==========================
     on(socket, "admin:login", (password, cb) => {
@@ -1459,6 +1518,8 @@ io.on("connection", (socket) => {
             gamesPlayed: db.stats.gamesPlayed || 0,
             roomsCreated: db.stats.roomsCreated || 0,
             bans: Object.keys(db.bans).length,
+            starsEarned: db.stats.starsEarned || 0,
+            topups: db.stats.topups || 0,
             uptimeSec: Math.round((Date.now() - startedAt) / 1000),
             memoryMb: Math.round(mem.rss / 1024 / 1024),
             persistent: store.persistent(),
@@ -1655,7 +1716,8 @@ process.on("SIGINT", shutdown);
 
 const PORT = process.env.PORT || 3001;
 // Сначала загружаем данные (из Upstash или файла), потом принимаем игроков
-store.init().finally(() => {
+store.init().finally(async () => {
+    await telegram.attach(app);
     server.listen(PORT, "0.0.0.0", () => {
         console.log(`🚀 Сервер запущен на порту ${PORT}`);
     });

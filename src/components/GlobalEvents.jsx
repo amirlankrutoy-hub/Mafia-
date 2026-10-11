@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { socket } from "../socket";
 import { toast } from "../services/toast";
 import { credit } from "../services/wallet";
+import { applyTopup } from "../services/topup";
 import { resumeAdmin, setDisabledRolesCache } from "../services/admin";
 import {
   announcePresence,
@@ -137,6 +138,8 @@ export default function GlobalEvents({ account }) {
         toast({ kind: "money", title: `+${amount} Токенов`, text: "Подарок от администрации" });
       }
     };
+    // Оплата звёздами подтверждена сервером — зачисляем Токены
+    const onTopup = (data) => applyTopup(data);
     const onBanned = (info) => setBan(info);
     const onUnbanned = () => setBan(null);
 
@@ -144,6 +147,7 @@ export default function GlobalEvents({ account }) {
     socket.on("you-received-currency", onCurrency);
     socket.on("banned", onBanned);
     socket.on("unbanned", onUnbanned);
+    socket.on("topup:success", onTopup);
 
     return () => {
       offs.forEach((off) => off());
@@ -151,6 +155,7 @@ export default function GlobalEvents({ account }) {
       socket.off("you-received-currency", onCurrency);
       socket.off("banned", onBanned);
       socket.off("unbanned", onUnbanned);
+      socket.off("topup:success", onTopup);
     };
   }, [joinRoom, navigate]);
 

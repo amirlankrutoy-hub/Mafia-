@@ -191,6 +191,8 @@ function Overview() {
     ["Сыграно партий", data.gamesPlayed],
     ["Создано комнат", data.roomsCreated],
     ["Банов", data.bans],
+    ["Заработано ⭐", data.starsEarned ?? 0],
+    ["Покупок Токенов", data.topups ?? 0],
     ["Аптайм", formatUptime(data.uptimeSec)]
   ];
 
