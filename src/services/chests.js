@@ -1,6 +1,6 @@
 // chests.js — открытие сундуков: списание Токенов, случайная награда, зачисление.
 import roles from "../data/roles";
-import { CHESTS, ROLE_RARITY, DUPLICATE_TOKENS } from "../data/chests";
+import { CHESTS, ROLE_RARITY, DUPLICATE_TOKENS, BASE_ROLES, MAX_TOKEN_SHARE } from "../data/chests";
 import { EMOJIS } from "../data/shopData";
 import { debit, credit, getWallet, grantItem } from "./wallet";
 import { creditTeni } from "./teniWallet";
@@ -45,11 +45,11 @@ export function openChest(chestId) {
 
   if (type === "role") {
     const rarity = pickWeighted(chest.roleRarity);
-    const pool = Object.keys(ROLE_RARITY).filter((id) => ROLE_RARITY[id] === rarity);
+    const pool = Object.keys(ROLE_RARITY).filter((id) => ROLE_RARITY[id] === rarity && !BASE_ROLES.includes(id));
     const roleId = pool[Math.floor(Math.random() * pool.length)];
     const role = roles.find((r) => r.id === roleId);
     if (wallet.ownedRoles.includes(roleId)) {
-      const amount = DUPLICATE_TOKENS[rarity];
+      const amount = Math.min(DUPLICATE_TOKENS[rarity], Math.floor((chest.price * MAX_TOKEN_SHARE) / 10) * 10);
       credit(amount);
       return { success: true, reward: { type, rarity, role, duplicate: true, amount } };
     }
@@ -63,7 +63,8 @@ export function openChest(chestId) {
     return { success: true, reward: { type, rarity: amount >= chest.teni[1] * 0.8 ? "epic" : "rare", amount } };
   }
 
-  const amount = roundTo(rand(...chest.tokens), 10);
+  const cap = Math.floor(chest.price * MAX_TOKEN_SHARE);
+  const amount = Math.min(cap, roundTo(rand(...chest.tokens), 10));
   credit(amount);
   const ratio = (amount - chest.tokens[0]) / (chest.tokens[1] - chest.tokens[0]);
   return { success: true, reward: { type: "tokens", rarity: ratio > 0.8 ? "epic" : ratio > 0.4 ? "rare" : "common", amount } };

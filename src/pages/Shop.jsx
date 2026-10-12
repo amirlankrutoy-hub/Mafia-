@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import roles from "../data/roles";
 import { EMOJIS, DECORATIONS, ADMIN_DECORATION } from "../data/shopData";
-import { CHESTS, RARITIES, RARITY_ORDER, ROLE_RARITY, roleChance } from "../data/chests";
+import { CHESTS, RARITIES, RARITY_ORDER, ROLE_RARITY, BASE_ROLES, roleChance } from "../data/chests";
 import { openChest } from "../services/chests";
 import ChestSVG from "../components/shop/ChestSVG";
 import ChestOpening from "../components/shop/ChestOpening";
@@ -371,7 +371,7 @@ function ChestsTab({ wallet }) {
             Открыто <b className="text-[#f3d27a]">{ownedCount}</b> из {collection.length}
           </span>
         </div>
-        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
           {collection.map((role, i) => {
             const rar = RARITIES[ROLE_RARITY[role.id]];
             const owned = wallet.ownedRoles?.includes(role.id);
@@ -385,7 +385,9 @@ function ChestsTab({ wallet }) {
                 <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-transparent" />
                 {!owned && <span className="absolute left-1/2 top-1/3 -translate-x-1/2 text-3xl">🔒</span>}
                 <div className="absolute inset-x-0 bottom-0 p-2.5">
-                  <div className="text-[10px] font-black uppercase tracking-wider" style={{ color: rar.color }}>{rar.label}</div>
+                  <div className="text-[10px] font-black uppercase tracking-wider" style={{ color: rar.color }}>
+                    {BASE_ROLES.includes(role.id) ? "Базовая · есть у всех" : rar.label}
+                  </div>
                   <div className="font-display text-base font-bold text-[#f3e5ab]">{role.name}</div>
                 </div>
               </div>
