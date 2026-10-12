@@ -5,6 +5,7 @@ import { socket } from "../../socket";
 import MayorPanel from "./MayorPanel";
 import DeathScreamer from "./DeathScreamer";
 import AbilityBar from "../../components/AbilityBar";
+import ChatPanel from "../../components/ChatPanel";
 import roles from "../../data/roles";
 import { credit } from "../../services/wallet";
 import { recordEvent } from "../../services/achievementsService";
@@ -219,6 +220,18 @@ export default function GameRoom({ roomCode, isMayor, players: initialPlayers, m
     </>
   );
 
+  // Общий чат — только на голосовании; канал мафии — если жив хоть один напарник
+  const chatChannels = [];
+  if (["voting", "vote_pending", "vote_result"].includes(phase) && (isMayor || alive)) {
+    chatChannels.push({ id: "room", label: "Общий" });
+  }
+  const teammatesAlive = (team || []).filter(
+    (m) => m.id !== socket.id && players.some((p) => p.name === m.name && p.alive !== false)
+  ).length;
+  if (!isMayor && alive && phase !== "ended" && ["mafia", "otez", "vor"].includes(myRole) && teammatesAlive > 0) {
+    chatChannels.push({ id: "mafia", label: "Семья" });
+  }
+
   const screen = (() => {
     if (phase === "ended") {
       return (
@@ -348,6 +361,7 @@ export default function GameRoom({ roomCode, isMayor, players: initialPlayers, m
     <>
       {screen}
       {overlay}
+      <ChatPanel roomCode={roomCode} channels={chatChannels} className="bottom-20 right-4" />
       {phase === "ended" && !isMayor && (
         <button
           type="button"

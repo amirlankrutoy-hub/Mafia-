@@ -1,6 +1,37 @@
 import { socket } from "../socket";
 
-const ACK_TIMEOUT_MS = 8000;
+// На слабом мобильном интернете ответ может идти долго — 8 секунд было мало
+const ACK_TIMEOUT_MS = 25000;
+
+/** Сообщить серверу о проблеме на стороне игрока — чтобы её было видно в логах */
+export function reportClientError(where, message) {
+    try {
+        socket.emit("client:log", {
+            where,
+            message: String(message || "").slice(0, 300),
+            connected: socket.connected,
+            transport: socket.io?.engine?.transport?.name || null,
+            online: typeof navigator !== "undefined" ? navigator.onLine : null,
+            ua: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 200) : null
+        });
+    } catch (_) {}
+}
+
+function waitForConnect(ms) {
+    return new Promise((resolve) => {
+        if (socket.connected) return resolve(true);
+        const t = setTimeout(() => {
+            socket.off("connect", on);
+            resolve(false);
+        }, ms);
+        const on = () => {
+            clearTimeout(t);
+            resolve(true);
+        };
+        socket.once("connect", on);
+        socket.connect();
+    });
+}
 
 // Оборачивает emit с ack-колбэком: если сервер не ответил за ACK_TIMEOUT_MS,
 // возвращаем понятную ошибку вместо вечного "зависания" интерфейса.
@@ -56,8 +87,17 @@ export function createRoom(playerName, avatar, accountId = null) {
 // Войти в комнату
 // ==========================
 
-export function joinRoom(roomCode, playerName, avatar, accountId = null) {
-    return emitWithTimeout("join-room", roomCode, playerName, avatar, accountId);
+export async function joinRoom(roomCode, playerName, avatar, accountId = null) {
+    let res = await emitWithTimeout("join-room", roomCode, playerName, avatar, accountId);
+    // Связь оборвалась или сервер долго не отвечал — дожидаемся соединения и пробуем ещё раз
+    if (!res?.success && /сервер|подключиться/i.test(res?.message || "")) {
+        reportClientError("join-room", res?.message);
+        if (await waitForConnect(30000)) {
+            res = await emitWithTimeout("join-room", roomCode, playerName, avatar, accountId);
+        }
+        if (!res?.success) reportClientError("join-room-retry", res?.message);
+    }
+    return res;
 }
 
 // ==========================

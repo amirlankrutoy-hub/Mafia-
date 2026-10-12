@@ -138,6 +138,36 @@ function ensureProfile(id, name) {
     return db.accountProfiles[id];
 }
 
+// Похожие кириллические буквы приводим к латинским, убираем пробелы и
+// разделители — чтобы "аdmin", "a d m i n", "Admin_1" тоже ловились.
+const LOOKALIKE = { "а": "a", "е": "e", "о": "o", "і": "i", "ı": "i", "д": "d", "м": "m", "н": "n", "1": "i", "!": "i", "0": "o" };
+const RESERVED_ADMIN_NAMES = ["admin", "admin2"];
+
+function nameKey(name) {
+    return cleanName(name)
+        .toLowerCase()
+        .split("")
+        .map((ch) => LOOKALIKE[ch] || ch)
+        .join("")
+        .replace(/[\s._\-*|]+/g, "");
+}
+
+/** Проверка ника: { ok, message } */
+function validateName(name, accountId) {
+    const clean = cleanName(name);
+    if (clean.length < 2) return { ok: false, message: "Ник слишком короткий (минимум 2 символа)" };
+    if (clean.length > 20) return { ok: false, message: "Ник слишком длинный (максимум 20 символов)" };
+    const exact = clean.toLowerCase();
+    if (nameKey(clean).includes("admin") && !RESERVED_ADMIN_NAMES.includes(exact)) {
+        return { ok: false, message: "Ник со словом admin использовать нельзя" };
+    }
+    const owner = nameTakenBy(clean);
+    if (owner && owner !== String(accountId || "")) {
+        return { ok: false, message: "Этот ник уже занят другим игроком" };
+    }
+    return { ok: true, name: clean };
+}
+
 function nameTakenBy(name) {
     const key = cleanName(name).toLowerCase();
     if (!key) return null;
@@ -718,8 +748,10 @@ io.on("connection", (socket) => {
         socket.data.accountId = accountId;
         socket.join(`acc:${accountId}`);
 
-        const prof = ensureProfile(accountId, cleanName(name));
-        if (cleanName(name)) prof.name = cleanName(name);
+        const fresh = !profileOf(accountId);
+        const check = validateName(name, accountId);
+        const prof = ensureProfile(accountId, check.ok ? check.name : null);
+        if (check.ok && (fresh || prof.name !== check.name)) prof.name = check.name;
         prof.lastSeen = Date.now();
         store.save();
 
@@ -736,8 +768,28 @@ io.on("connection", (socket) => {
     });
 
     on(socket, "account:check-name", ({ name, accountId } = {}, cb) => {
-        const owner = nameTakenBy(name);
-        ack(cb)({ available: !owner || owner === String(accountId || "") });
+        const check = validateName(name, accountId);
+        ack(cb)({ available: check.ok, message: check.message });
+    });
+
+    // Смена ника
+    on(socket, "account:rename", ({ name } = {}, cb) => {
+        const done = ack(cb);
+        const myId = me();
+        if (!myId) return done({ success: false, message: "Сначала войдите в аккаунт" });
+        const now = Date.now();
+        if (socket.data.lastRenameAt && now - socket.data.lastRenameAt < 5000) {
+            return done({ success: false, message: "Слишком часто. Подождите пару секунд." });
+        }
+        const check = validateName(name, myId);
+        if (!check.ok) return done({ success: false, message: check.message });
+        socket.data.lastRenameAt = now;
+        const prof = ensureProfile(myId);
+        prof.name = check.name;
+        if (presence[myId]) presence[myId].name = check.name;
+        store.save();
+        notifyFriendsAboutMe(myId);
+        done({ success: true, name: check.name });
     });
 
     on(socket, "presence:search", (id, cb) => {
@@ -762,7 +814,7 @@ io.on("connection", (socket) => {
         const prof = ensureProfile(me());
         const nextIcon = icon !== undefined ? cleanIcon(icon) : prof.icon;
         const nextFav = favoriteRole !== undefined ? (GameFlowManager.ROLE_NAMES[favoriteRole] ? favoriteRole : null) : prof.favoriteRole;
-        const nextName = cleanName(name) || prof.name;
+        const nextName = prof.name; // ник меняется только через account:rename
         if (nextIcon === prof.icon && nextFav === prof.favoriteRole && nextName === prof.name) return;
         prof.icon = nextIcon;
         prof.favoriteRole = nextFav;
@@ -1054,7 +1106,11 @@ io.on("connection", (socket) => {
             avatar: cleanIcon(avatar) || "/avatars/avatar1.svg",
             accountId: accId
         });
-        if (!result.success) return done(result);
+        if (!result.success) {
+            console.log(`🚪 Вход в ${code} отклонён (${cleanName(playerName)} #${accId || "-"}): ${result.message}`);
+            return done(result);
+        }
+        console.log(`👤 ${cleanName(playerName)} #${accId || "-"} ${result.reconnected ? "вернулся в" : "вошёл в"} ${code} (игроков: ${result.room.players.length})`);
 
         const r = result.room;
         const oldId = result.oldId || null;
@@ -1447,6 +1503,75 @@ io.on("connection", (socket) => {
     });
 
     // ==========================
+    // Чат: общий (лобби и голосование) и личный канал мафии
+    // ==========================
+    const CHAT_PHASES = ["voting", "vote_pending", "vote_result"];
+
+    on(socket, "chat:send", ({ roomCode, text, channel } = {}, cb) => {
+        const done = ack(cb);
+        const room = RoomManager.getRoom(roomCode);
+        if (!room) return done({ success: false, message: "Комната не найдена" });
+        const msg = cleanText(text, 200);
+        if (!msg) return done({ success: false });
+
+        const now = Date.now();
+        if (socket.data.lastChatAt && now - socket.data.lastChatAt < 700) {
+            return done({ success: false, message: "Не так быстро" });
+        }
+
+        const isMayor = room.mayor?.id === socket.id;
+        const player = room.players.find((p) => p.id === socket.id);
+        if (!isMayor && !player) return done({ success: false, message: "Вы не в этой комнате" });
+        const author = isMayor ? room.mayor : player;
+
+        const MAFIA = ["mafia", "otez", "vor"];
+        let targets;
+        if (channel === "mafia") {
+            if (!room.started || room.phase === "ended") return done({ success: false, message: "Игра не идёт" });
+            if (!player || player.alive === false || !MAFIA.includes(player.role)) {
+                return done({ success: false, message: "Этот чат только для мафии" });
+            }
+            const team = room.players.filter((p) => p.alive !== false && MAFIA.includes(p.role));
+            if (team.length < 2) return done({ success: false, message: "Напарников по мафии нет в живых" });
+            targets = team.map((p) => p.id);
+        } else {
+            channel = "room";
+            if (room.started && room.phase !== "ended" && !CHAT_PHASES.includes(room.phase)) {
+                return done({ success: false, message: "Общий чат открыт в лобби и во время голосования" });
+            }
+            if (room.started && room.phase !== "ended" && player && player.alive === false) {
+                return done({ success: false, message: "Выбывшие игроки не могут писать" });
+            }
+        }
+
+        socket.data.lastChatAt = now;
+        const message = {
+            id: `${now}-${Math.random().toString(36).slice(2, 7)}`,
+            channel,
+            fromId: socket.id,
+            name: author.name,
+            avatar: author.avatar,
+            isMayor,
+            text: msg,
+            at: now
+        };
+        if (channel === "mafia") {
+            targets.forEach((id) => io.to(id).emit("chat:message", message));
+        } else {
+            room.chat = [...(room.chat || []), message].slice(-60);
+            io.to(room.code).emit("chat:message", message);
+        }
+        done({ success: true });
+    });
+
+    on(socket, "chat:history", (roomCode, cb) => {
+        const room = RoomManager.getRoom(roomCode);
+        if (typeof cb !== "function") return;
+        const inRoom = room && (room.mayor?.id === socket.id || room.players.some((p) => p.id === socket.id));
+        cb(inRoom ? room.chat || [] : []);
+    });
+
+    // ==========================
     // Покупка Токенов за звёзды
     // ==========================
     on(socket, "topup:packages", (cb) => {
@@ -1642,6 +1767,17 @@ io.on("connection", (socket) => {
         if (!msg) return cb({ success: false, message: "Пустое сообщение" });
         io.emit("announcement", { text: msg, at: Date.now() });
         cb({ success: true, message: "Объявление отправлено всем онлайн" });
+    });
+
+    // Ошибки на стороне игрока (не смог войти и т.п.) — пишем в лог сервера
+    on(socket, "client:log", (info = {}) => {
+        const now = Date.now();
+        if (socket.data.lastClientLog && now - socket.data.lastClientLog < 2000) return;
+        socket.data.lastClientLog = now;
+        console.warn(
+            `📱 Проблема у игрока #${me() || "-"} [${cleanText(info.where, 40)}]: ${cleanText(info.message, 300)} | ` +
+                `transport=${cleanText(info.transport, 20)} online=${info.online} | ${cleanText(info.ua, 200)}`
+        );
     });
 
     on(socket, "roles:get-disabled", (cb) => {

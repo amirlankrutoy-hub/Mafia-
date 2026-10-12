@@ -96,6 +96,17 @@ export function registerOrLoginByName(rawName) {
   return { success: true, account };
 }
 
+/** Сменить имя своего аккаунта (после того как сервер разрешил новый ник) */
+export function renameMyAccount(newName) {
+  const mine = getMyAccount();
+  if (!mine) return null;
+  const registry = readRegistry();
+  delete registry[normalize(mine.name)];
+  registry[normalize(newName)] = { id: mine.id };
+  writeRegistry(registry);
+  return saveMyAccount({ ...mine, name: newName });
+}
+
 /** Полный сброс аккаунта устройства (для отладки / админ-панели) */
 export function resetMyAccount() {
   const mine = getMyAccount();

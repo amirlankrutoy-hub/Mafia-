@@ -55,6 +55,8 @@ export function checkNameAvailable(name, accountId) {
   return request("account:check-name", { name, accountId }, { available: true });
 }
 
+export const renameAccount = (name) => request("account:rename", { name }, NO_ANSWER);
+
 // ---------- Профиль ----------
 export const getProfile = (accountId) => request("profile:get", accountId, null);
 

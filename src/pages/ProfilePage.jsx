@@ -9,7 +9,9 @@ import {
   getFavoriteRole,
   setFavoriteRole
 } from '../services/profile';
-import { updateProfile } from '../services/presence';
+import { updateProfile, renameAccount, announcePresence } from '../services/presence';
+import { renameMyAccount } from '../services/accounts';
+import { toast } from '../services/toast';
 import { getStats } from '../services/achievementsService';
 import useSeo from '../hooks/useSeo';
 
@@ -20,6 +22,24 @@ export default function ProfilePage({ account }) {
   const [saved, setSaved] = useState(false);
 
   const wins = getStats()?.wins || 0;
+  const [newName, setNewName] = useState('');
+  const [nameError, setNameError] = useState('');
+  const [renaming, setRenaming] = useState(false);
+
+  const submitRename = async (e) => {
+    e.preventDefault();
+    const name = newName.trim();
+    if (!name || name === account?.name) return;
+    setRenaming(true);
+    const res = await renameAccount(name);
+    setRenaming(false);
+    if (!res?.success) return setNameError(res?.message || 'Не удалось сменить ник');
+    renameMyAccount(res.name);
+    announcePresence(account.id, res.name);
+    setNewName('');
+    setNameError('');
+    toast({ kind: 'success', title: 'Ник изменён', text: `Теперь вы — ${res.name}` });
+  };
 
   useEffect(() => {
     setAvatar(getSelectedAvatar());
@@ -76,6 +96,26 @@ export default function ProfilePage({ account }) {
         />
         <p className="text-lg font-black text-[#f3e5ab]">{account.name}</p>
         <p className="font-mono text-xs text-[#8b6b12]">ID: {account.id}</p>
+
+        <form onSubmit={submitRename} className="mt-3 w-full max-w-sm">
+          <div className="flex gap-2">
+            <input
+              value={newName}
+              onChange={(e) => {
+                setNewName(e.target.value);
+                setNameError('');
+              }}
+              maxLength={20}
+              placeholder="Новый ник"
+              className="input-noir !py-2 text-sm"
+            />
+            <button type="submit" disabled={renaming || !newName.trim()} className="btn btn-gold btn-sm shrink-0">
+              {renaming ? '…' : 'Сменить ник'}
+            </button>
+          </div>
+          {nameError && <p className="mt-1.5 text-xs text-red-400 anim-shake">{nameError}</p>}
+          <p className="mt-1 text-[10px] text-[#8b6b12]">Ник должен быть уникальным. Слово admin в нике использовать нельзя.</p>
+        </form>
 
         <div className="mt-2 flex items-center gap-2 rounded-lg border border-[#d4af37]/25 bg-[#0d0705]/70 px-4 py-2">
           <FontAwesomeIcon icon={faTrophy} className="text-[#d4af37]" />

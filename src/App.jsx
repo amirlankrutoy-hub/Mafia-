@@ -156,6 +156,12 @@ function App() {
     }
   }, [account?.id]);
 
+  useEffect(() => {
+    const refresh = () => setAccount(getMyAccount());
+    window.addEventListener('mafia-account-changed', refresh);
+    return () => window.removeEventListener('mafia-account-changed', refresh);
+  }, []);
+
   const handleAccountReady = (acc) => {
     setAccount(acc);
     setShowModal(false);

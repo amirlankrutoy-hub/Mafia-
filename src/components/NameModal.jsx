@@ -17,9 +17,9 @@ const NameModal = ({ onAccountReady }) => {
 
     setBusy(true);
     // Имя должно быть уникальным среди всех игроков, а не только на этом устройстве
-    const { available } = await checkNameAvailable(name);
+    const { available, message } = await checkNameAvailable(name);
     setBusy(false);
-    if (!available) return setError('Это имя уже занято другим игроком. Выберите другое.');
+    if (!available) return setError(message || 'Это имя уже занято другим игроком. Выберите другое.');
 
     const result = registerOrLoginByName(name);
     if (!result.success) return setError(result.message);

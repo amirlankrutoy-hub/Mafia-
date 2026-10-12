@@ -22,6 +22,7 @@ import DecorationSVG from "./shop/DecorationSVG";
 import { sendFriendRequest, getFriendsList, getFriendRequests, inviteFriend } from "../services/presence";
 import { toast } from "../services/toast";
 import Avatar from "./ui/Avatar";
+import ChatPanel from "./ChatPanel";
 
 const ALL_DECORATIONS = [...DECORATIONS, ADMIN_DECORATION];
 const getDecoration = (id) => (id ? ALL_DECORATIONS.find((d) => d.id === id) || null : null);
@@ -328,6 +329,8 @@ export default function Lobby({
           )}
         </div>
       )}
+
+      <ChatPanel roomCode={roomCode} channels={[{ id: "room", label: "Лобби" }]} className="bottom-28 right-4 lg:bottom-28 lg:right-8" />
 
       {/* Действия */}
       <div className="sticky bottom-3 z-30 lg:bottom-5">
