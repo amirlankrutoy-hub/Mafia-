@@ -57,59 +57,64 @@ export const EMOJIS = [
 export const ADMIN_EMOJI = { id: "e_admin", symbol: "👑💫", price: null };
 
 // ---------- Украшения на карточку в лобби ----------
-// 10 базовых "форм" x 4 цветовые палитры = 40 украшений.
-const DECORATION_KINDS = [
-  "cap",
-  "tophat",
-  "crown",
-  "headband",
-  "halo",
-  "horns",
-  "flower",
-  "bandana",
-  "beanie",
-  "partyhat"
-];
+// 10 форм x 4 "драгоценные" палитры = 40 украшений.
+const DECORATION_KINDS = ["fedora", "tophat", "crown", "laurel", "halo", "horns", "rose", "bowler", "beret", "tiara"];
 
 const DECORATION_PALETTES = [
-  { id: "gold", main: "#d4af37", accent: "#f3e5ab", dark: "#8b6b12" },
-  { id: "red", main: "#8b0000", accent: "#ff4d4d", dark: "#4a0000" },
-  { id: "blue", main: "#1e3a8a", accent: "#60a5fa", dark: "#0b1a4a" },
-  { id: "purple", main: "#6b21a8", accent: "#c084fc", dark: "#3b0764" }
+  { id: "gold", main: "#d4af37", accent: "#fff1b8", dark: "#6b4f08", gem: "#c0151f" },
+  { id: "red", main: "#b3121b", accent: "#ff8a8a", dark: "#420005", gem: "#ffd166" },
+  { id: "blue", main: "#1d4ed8", accent: "#a5c8ff", dark: "#0b1a4a", gem: "#f3d27a" },
+  { id: "purple", main: "#7e22ce", accent: "#ead5ff", dark: "#33065a", gem: "#2dd4bf" }
 ];
 
 const KIND_NAMES = {
-  cap: "Кепка",
+  fedora: "Федора",
   tophat: "Цилиндр",
   crown: "Корона",
-  headband: "Повязка",
+  laurel: "Лавровый венок",
   halo: "Нимб",
-  horns: "Рожки",
-  flower: "Цветок",
-  bandana: "Бандана",
-  beanie: "Шапка",
-  partyhat: "Колпак"
+  horns: "Рога",
+  rose: "Роза",
+  bowler: "Котелок",
+  beret: "Берет",
+  tiara: "Тиара"
 };
 
 const PALETTE_NAMES = {
   gold: "золотой",
-  red: "алый",
-  blue: "синий",
-  purple: "фиолетовый"
+  red: "рубиновый",
+  blue: "сапфировый",
+  purple: "аметистовый"
 };
 
 const BASE_PRICES = {
-  cap: 150,
+  fedora: 150,
   tophat: 300,
   crown: 500,
-  headband: 120,
+  laurel: 220,
   halo: 350,
   horns: 250,
-  flower: 100,
-  bandana: 140,
-  beanie: 130,
-  partyhat: 160
+  rose: 100,
+  bowler: 140,
+  beret: 130,
+  tiara: 400
 };
+
+// Старые украшения -> новые (купленное у игроков переносится автоматически)
+export const LEGACY_DECORATION_KINDS = {
+  cap: "fedora",
+  headband: "laurel",
+  flower: "rose",
+  bandana: "bowler",
+  beanie: "beret",
+  partyhat: "tiara"
+};
+
+export function migrateDecorationId(id) {
+  if (!id) return id;
+  const [kind, palette] = String(id).split("_");
+  return LEGACY_DECORATION_KINDS[kind] ? `${LEGACY_DECORATION_KINDS[kind]}_${palette}` : id;
+}
 
 export const DECORATIONS = DECORATION_KINDS.flatMap((kind) =>
   DECORATION_PALETTES.map((palette) => ({
@@ -127,7 +132,7 @@ export const ADMIN_DECORATION = {
   id: "crown_admin",
   kind: "admin_crown",
   palette: "admin",
-  colors: { main: "#ffd700", accent: "#fff3c4", dark: "#7a5c00" },
+  colors: { main: "#ffd700", accent: "#fff6cc", dark: "#7a5c00", gem: "#ff2d55" },
   name: "Корона «ADMIN»",
   price: null
 };

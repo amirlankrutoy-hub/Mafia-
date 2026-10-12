@@ -8,7 +8,7 @@
 // аккаунты с логином, этот файл нужно будет переключить на запросы
 // к серверу/БД — структура данных ниже уже готова к этому переезду.
 
-import { PROMO_CODES, ROLE_PRICES, EMOJIS, DECORATIONS } from "../data/shopData";
+import { PROMO_CODES, ROLE_PRICES, EMOJIS, DECORATIONS, migrateDecorationId } from "../data/shopData";
 
 const STORAGE_KEY = "mafia_wallet_v1";
 const FREE_ROLES = ["obivatel", "mafia"]; // базовые роли — есть у всех бесплатно
@@ -80,7 +80,10 @@ function readState() {
     ...saved,
     ownedRoles: Array.from(
       new Set([...(saved.ownedRoles || []), ...FREE_ROLES])
-    )
+    ),
+    // старые украшения (кепка, повязка...) заменены новыми — переносим купленное
+    ownedDecorations: Array.from(new Set((saved.ownedDecorations || []).map(migrateDecorationId))),
+    equippedDecoration: migrateDecorationId(saved.equippedDecoration || null)
   };
 }
 

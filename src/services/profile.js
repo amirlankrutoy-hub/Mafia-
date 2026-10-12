@@ -4,7 +4,7 @@ const AVATAR_KEY = "mafia_selected_avatar_v1";
 const DEFAULT_AVATAR = "/avatars/avatar1.svg";
 
 export const AVATAR_LIST = Array.from(
-  { length: 17 },
+  { length: 20 },
   (_, i) => `/avatars/avatar${i + 1}.svg`
 );
 
