@@ -5,6 +5,7 @@ import { CHESTS, RARITIES, RARITY_ORDER, ROLE_RARITY, BASE_ROLES, roleChance } f
 import { openChest } from "../services/chests";
 import ChestSVG from "../components/shop/ChestSVG";
 import ChestOpening from "../components/shop/ChestOpening";
+import AnimatedEmoji from "../components/AnimatedEmoji";
 import { toast } from "../services/toast";
 import {
   getWallet,
@@ -129,7 +130,7 @@ export default function Shop() {
                 key={emoji.id}
                 className="rounded-xl border border-[#c5a059]/40 bg-[#120a07] p-4 text-center space-y-2"
               >
-                <div className="text-4xl">{emoji.symbol}</div>
+                <div className="text-4xl"><AnimatedEmoji id={emoji.id} symbol={emoji.symbol} /></div>
                 {owned ? (
                   <span className="text-xs text-emerald-400 uppercase tracking-wider">
                     Куплено

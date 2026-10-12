@@ -162,7 +162,7 @@ export default function GameRoom({ roomCode, isMayor, players: initialPlayers, m
     return (
       <DeathScreamer
         reason={dying.reason}
-        variant={dying.killedBy === "mafia" ? "mafia" : "generic"}
+        killedBy={dying.killedBy}
         onEnd={() => {
           setDying(null);
         }}

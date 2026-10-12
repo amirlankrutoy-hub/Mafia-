@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import ChestSVG from "./ChestSVG";
+import AnimatedEmoji from "../AnimatedEmoji";
 import { RARITIES } from "../../data/chests";
 
 const RAYS = Array.from({ length: 12 }, (_, i) => i * 30);
@@ -26,7 +27,7 @@ function RewardCard({ reward }) {
     title = reward.role.name;
     sub = "Новая роль открыта!";
   } else if (reward.type === "emoji") {
-    icon = <span className="text-8xl">{reward.emoji.symbol}</span>;
+    icon = <span className="text-8xl"><AnimatedEmoji id={reward.emoji.id} symbol={reward.emoji.symbol} /></span>;
     title = "Новый эмодзи";
     sub = "Отправляйте его в лобби";
   } else if (reward.type === "teni") {

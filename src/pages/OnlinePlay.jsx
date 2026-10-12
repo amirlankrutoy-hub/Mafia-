@@ -186,7 +186,7 @@ export default function OnlinePlay({ account }) {
       const emoji = EMOJIS.find((e) => e.id === emojiId);
       if (!emoji) return;
       const key = `${playerId}-${Date.now()}`;
-      setEmojiMap((prev) => ({ ...prev, [playerId]: { symbol: emoji.symbol, key } }));
+      setEmojiMap((prev) => ({ ...prev, [playerId]: { id: emoji.id, symbol: emoji.symbol, key } }));
       setTimeout(() => {
         setEmojiMap((prev) => {
           if (prev[playerId]?.key !== key) return prev;

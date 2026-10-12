@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
-  faFaceSmile,
   faVolumeHigh,
   faVolumeXmark,
   faUserPlus,
@@ -15,14 +14,15 @@ import {
   faGear,
   faClock
 } from "@fortawesome/free-solid-svg-icons";
-import { EMOJIS, DECORATIONS, ADMIN_DECORATION } from "../data/shopData";
-import { ownsEmoji } from "../services/wallet";
+import { DECORATIONS, ADMIN_DECORATION } from "../data/shopData";
 import { useMusic } from "../context/MusicContext";
 import DecorationSVG from "./shop/DecorationSVG";
 import { sendFriendRequest, getFriendsList, getFriendRequests, inviteFriend } from "../services/presence";
 import { toast } from "../services/toast";
 import Avatar from "./ui/Avatar";
 import ChatPanel from "./ChatPanel";
+import EmojiButton from "./EmojiButton";
+import AnimatedEmoji from "./AnimatedEmoji";
 
 const ALL_DECORATIONS = [...DECORATIONS, ADMIN_DECORATION];
 const getDecoration = (id) => (id ? ALL_DECORATIONS.find((d) => d.id === id) || null : null);
@@ -37,8 +37,8 @@ function Seat({ p, i, emoji, isMe, isMayorView, friendState, onAddFriend, onKick
       style={{ "--i": i }}
     >
       {emoji && (
-        <span key={emoji.key} className="pointer-events-none absolute -top-4 right-3 z-20 text-3xl anim-pop">
-          <span className="block animate-bounce">{emoji.symbol}</span>
+        <span key={emoji.key} className="emoji-burst pointer-events-none absolute -top-6 right-2 z-20 text-4xl drop-shadow-[0_4px_8px_rgba(0,0,0,0.8)]">
+          <AnimatedEmoji id={emoji.id} symbol={emoji.symbol} />
         </span>
       )}
       <div className="relative">
@@ -102,9 +102,7 @@ export default function Lobby({
   const readyCount = players.filter((p) => p.ready).length;
   const total = players.length;
   const allReady = total > 0 && readyCount === total;
-  const ownedEmojis = EMOJIS.filter((e) => ownsEmoji(e.id));
 
-  const [emojiOpen, setEmojiOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [friends, setFriends] = useState([]);
   const [outgoing, setOutgoing] = useState([]);
@@ -202,8 +200,8 @@ export default function Lobby({
           {mayor && (
             <div className="relative flex items-center gap-4 rounded-2xl border border-[#d4af37]/30 bg-black/30 p-4">
               {emojiMap[mayor.id] && (
-                <span key={emojiMap[mayor.id].key} className="pointer-events-none absolute -top-5 right-3 text-3xl anim-pop">
-                  {emojiMap[mayor.id].symbol}
+                <span key={emojiMap[mayor.id].key} className="emoji-burst pointer-events-none absolute -top-7 right-2 text-4xl drop-shadow-[0_4px_8px_rgba(0,0,0,0.8)]">
+                  <AnimatedEmoji id={emojiMap[mayor.id].id} symbol={emojiMap[mayor.id].symbol} />
                 </span>
               )}
               <div className="relative">
@@ -307,29 +305,7 @@ export default function Lobby({
         </div>
       )}
 
-      {/* Эмодзи */}
-      {ownedEmojis.length > 0 && (
-        <div className="flex flex-col items-center">
-          <button type="button" onClick={() => setEmojiOpen((v) => !v)} className="btn btn-ghost btn-sm">
-            <FontAwesomeIcon icon={faFaceSmile} /> Эмодзи
-          </button>
-          {emojiOpen && (
-            <div className="noir-card mt-3 grid max-h-44 w-full max-w-md grid-cols-6 gap-2 overflow-y-auto p-3 anim-scale-in">
-              {ownedEmojis.map((e) => (
-                <button
-                  key={e.id}
-                  type="button"
-                  onClick={() => onSendEmoji?.(e.id)}
-                  className="flex aspect-square items-center justify-center rounded-xl bg-black/40 text-2xl transition hover:scale-115 hover:bg-[#d4af37]/15 active:scale-95"
-                >
-                  {e.symbol}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
+      <EmojiButton onSend={onSendEmoji} className="bottom-28 right-20 lg:right-24" />
       <ChatPanel roomCode={roomCode} channels={[{ id: "room", label: "Лобби" }]} className="bottom-28 right-4 lg:bottom-28 lg:right-8" />
 
       {/* Действия */}
