@@ -68,7 +68,6 @@ function Home({ userName }) {
 
   const navigate = useNavigate();
   const goPlay = () => {
-    sessionStorage.removeItem('mafia_story_seen');
     navigate('/online');
   };
 

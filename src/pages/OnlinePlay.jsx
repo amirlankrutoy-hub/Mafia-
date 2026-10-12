@@ -144,7 +144,7 @@ export default function OnlinePlay({ account }) {
     const params = new URLSearchParams(location.search);
     const auto = params.get("autojoin");
     if (auto) {
-      navigate("/online", { replace: true, state: { fromStory: true } });
+      navigate("/online", { replace: true });
       join(auto);
       return;
     }

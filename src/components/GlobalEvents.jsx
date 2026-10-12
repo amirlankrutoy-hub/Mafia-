@@ -43,8 +43,7 @@ export default function GlobalEvents({ account }) {
   const joinRoom = useCallback(
     (roomCode) => {
       // История-интро не должна перехватывать вход по приглашению
-      sessionStorage.setItem("mafia_story_seen", "1");
-      navigate(`/online?autojoin=${encodeURIComponent(roomCode)}`, { state: { fromStory: true } });
+      navigate(`/online?autojoin=${encodeURIComponent(roomCode)}`);
     },
     [navigate]
   );

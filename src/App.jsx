@@ -1,5 +1,5 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
-import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
+import { Routes, Route, useLocation } from 'react-router-dom';
 import Home from './pages/Home';
 import RolesGallery from './pages/RolesGallery';
 import RoleDetail from './pages/RoleDetail';
@@ -22,7 +22,6 @@ import { getMyAccount } from './services/accounts';
 import Navbar from './components/Navbar';
 import NotFound from './pages/NotFound';
 import NameModal from './components/NameModal';
-import StoryIntro from './components/StoryIntro';
 import { MusicProvider, useMusic } from './context/MusicContext';
 import { LanguageProvider } from './context/LanguageContext';
 import PrivacyPolicy from './pages/PrivacyPolicy';
@@ -35,11 +34,7 @@ const Play = lazy(() => import('./pages/Play'));
 function AppRoutes({ account, showModal, handleAccountReady }) {
   const userName = account?.name || '';
   const location = useLocation();
-  const navigate = useNavigate();
   const { playMenu, stopMenu, stopLobby } = useMusic();
-
-  const [showStory, setShowStory] = useState(false);
-  const [pendingOnlinePath, setPendingOnlinePath] = useState(null);
 
   // Убираем заставку из index.html, когда приложение готово
   useEffect(() => {
@@ -62,36 +57,6 @@ function AppRoutes({ account, showModal, handleAccountReady }) {
   }, [location.pathname, playMenu, stopMenu, stopLobby]);
 
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    // Вход по приглашению/ссылке — без заставки, сразу в комнату
-    if (params.get('autojoin')) return;
-    if (location.pathname === '/online' && location.state?.fromStory !== true) {
-      const seen = sessionStorage.getItem('mafia_story_seen') === '1';
-      if (!seen) {
-        setPendingOnlinePath(location.pathname + location.search);
-        setShowStory(true);
-        navigate('/', { replace: true });
-      }
-    }
-  }, [location.pathname, location.search, location.state, navigate]);
-
-  const handleStoryFinish = () => {
-    sessionStorage.setItem('mafia_story_seen', '1');
-    setShowStory(false);
-    const target = pendingOnlinePath || '/online';
-    setPendingOnlinePath(null);
-    navigate(target, { state: { fromStory: true } });
-  };
-
-  useEffect(() => {
-    if (location.state?.forceStory) {
-      setPendingOnlinePath('/online');
-      setShowStory(true);
-      navigate('/', { replace: true, state: {} });
-    }
-  }, [location.state, navigate]);
-
-  useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
   }, [location.pathname]);
 
@@ -101,14 +66,12 @@ function AppRoutes({ account, showModal, handleAccountReady }) {
     <div className="relative min-h-screen text-[#e6d5bc] font-sans selection:bg-[#d4af37] selection:text-black">
       <Ambient />
 
-      {showModal && !showStory && <NameModal onAccountReady={handleAccountReady} />}
+      {showModal && <NameModal onAccountReady={handleAccountReady} />}
 
-      {!showStory && <Navbar account={account} />}
+      <Navbar account={account} />
 
       <main
-        className={`relative mx-auto w-full px-3 sm:px-5 ${isGame ? 'py-3 sm:py-5' : 'pt-5 pb-28 sm:pt-8 lg:pb-10'} lg:pl-[18.5rem] lg:pr-8 max-w-[1600px] ${
-          showStory ? 'hidden' : ''
-        }`}
+        className={`relative mx-auto w-full px-3 sm:px-5 ${isGame ? 'py-3 sm:py-5' : 'pt-5 pb-28 sm:pt-8 lg:pb-10'} lg:pl-[18.5rem] lg:pr-8 max-w-[1600px]`}
       >
         <ErrorBoundary resetKey={location.pathname}>
           <div key={location.pathname} className="page-enter">
@@ -136,7 +99,6 @@ function AppRoutes({ account, showModal, handleAccountReady }) {
         </ErrorBoundary>
       </main>
 
-      {showStory && <StoryIntro onFinish={handleStoryFinish} />}
       <GlobalEvents account={account} />
       <Toaster />
       <PaymentSuccess />

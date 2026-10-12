@@ -113,7 +113,6 @@ const Navbar = ({ account }) => {
 
   const goPlay = () => {
     setIsDrawerOpen(false);
-    sessionStorage.removeItem('mafia_story_seen');
     navigate('/online');
   };
 
