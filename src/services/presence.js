@@ -121,3 +121,12 @@ export const onFriendJoinDecision = (cb) => subscribe("friend:join-decision", cb
 // ---------- Отключённые админом роли ----------
 export const getDisabledRolesRemote = () => request("roles:get-disabled", undefined, {});
 export const onDisabledRolesChanged = (cb) => subscribe("roles:disabled", cb);
+
+// ---------- Саппорт: сообщение администратору ----------
+export const sendSupportReport = (type, text, targetId) =>
+  request("support:report", { type, text, targetId }, NO_ANSWER);
+
+// ---------- Личные сообщения друзьям ----------
+export const sendDirectMessage = (to, text) => request("dm:send", { to, text }, NO_ANSWER);
+export const getDirectHistory = (withId) => request("dm:history", { with: withId }, []);
+export const onDirectMessage = (cb) => subscribe("dm:message", cb);

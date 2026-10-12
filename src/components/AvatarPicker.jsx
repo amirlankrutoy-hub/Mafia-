@@ -1,27 +1,8 @@
-import { isAdmin } from "../services/admin";
+import { getAvailableAvatars } from "../services/profile";
 
-const AVATARS = [
-  "/avatars/avatar1.svg",
-  "/avatars/avatar2.svg",
-  "/avatars/avatar3.svg",
-  "/avatars/avatar4.svg",
-  "/avatars/avatar5.svg",
-  "/avatars/avatar6.svg",
-  "/avatars/avatar7.svg",
-  "/avatars/avatar8.svg",
-  "/avatars/avatar9.svg",
-  "/avatars/avatar10.svg",
-  "/avatars/avatar11.svg",
-  "/avatars/avatar12.svg",
-  "/avatars/avatar13.svg",
-  "/avatars/avatar14.svg",
-  "/avatars/avatar15.svg",
-  "/avatars/avatar16.svg",
-  "/avatars/avatar17.svg",
-];
 
 export default function AvatarPicker({ onSelect }) {
-  const list = isAdmin() ? [...AVATARS, "/avatars/avatar_admin.svg"] : AVATARS;
+  const list = getAvailableAvatars();
   return (
     <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[100]">
       <div className="bg-[#181818] p-8 rounded-2xl border border-yellow-600 max-w-4xl max-h-[85vh] overflow-y-auto relative z-[101]">

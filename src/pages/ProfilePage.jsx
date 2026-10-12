@@ -3,7 +3,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faTrophy, faCheck } from '@fortawesome/free-solid-svg-icons';
 import roles from '../data/roles';
 import {
-  AVATAR_LIST,
+  getAvailableAvatars,
   getSelectedAvatar,
   setSelectedAvatar,
   getFavoriteRole,
@@ -136,7 +136,7 @@ export default function ProfilePage({ account }) {
           Иконка (видна другим игрокам)
         </h2>
         <div className="grid grid-cols-6 gap-2 sm:grid-cols-8">
-          {AVATAR_LIST.map((path) => (
+          {getAvailableAvatars().map((path) => (
             <button
               key={path}
               type="button"

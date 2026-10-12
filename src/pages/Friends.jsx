@@ -10,7 +10,8 @@ import {
   faCopy,
   faUserMinus,
   faClock,
-  faRankingStar
+  faRankingStar,
+  faComment
 } from '@fortawesome/free-solid-svg-icons';
 import { getRecentPlayers } from '../services/friends';
 import {
@@ -31,6 +32,8 @@ import {
 import { refreshRequestCount } from '../components/GlobalEvents';
 import { toast } from '../services/toast';
 import PlayerProfileModal from '../components/PlayerProfileModal';
+import DirectChat from '../components/DirectChat';
+import { getUnread, onUnreadChanged } from '../services/dm';
 import Avatar from '../components/ui/Avatar';
 import useSeo from '../hooks/useSeo';
 
@@ -64,6 +67,12 @@ const Friends = ({ account }) => {
   const [searchError, setSearchError] = useState('');
   const [busyId, setBusyId] = useState(null);
   const [openProfileId, setOpenProfileId] = useState(null);
+  const [unread, setUnread] = useState(getUnread());
+  const chatId = params.get('chat');
+  const openChat = (id) => setParams({ chat: id }, { replace: true });
+  const closeChat = () => setParams(tab === 'friends' ? {} : { tab }, { replace: true });
+
+  useEffect(() => onUnreadChanged(() => setUnread(getUnread())), []);
   const recent = getRecentPlayers();
 
   const load = useCallback(async () => {
@@ -161,6 +170,20 @@ const Friends = ({ account }) => {
         {isFriend(person.id) && s?.online && s?.isMayor && s?.roomCode && (
           <button disabled={busy} onClick={() => knock({ ...person, roomCode: s.roomCode })} className="btn btn-blood btn-sm">
             <FontAwesomeIcon icon={faDoorOpen} /> Постучаться
+          </button>
+        )}
+        {tab === 'friends' && (
+          <button
+            onClick={() => openChat(person.id)}
+            className="btn btn-gold btn-sm relative !px-2.5"
+            title="Написать сообщение"
+          >
+            <FontAwesomeIcon icon={faComment} />
+            {unread[person.id] > 0 && (
+              <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#c0151f] px-1 text-[9px] font-black text-white">
+                {unread[person.id]}
+              </span>
+            )}
           </button>
         )}
         {tab === 'friends' ? (
@@ -365,6 +388,10 @@ const Friends = ({ account }) => {
           </div>
         )}
       </div>
+
+      {chatId && friends.find((f) => f.id === chatId) && (
+        <DirectChat friend={friends.find((f) => f.id === chatId)} myId={account?.id} onClose={closeChat} />
+      )}
 
       {openProfileId && (
         <PlayerProfileModal

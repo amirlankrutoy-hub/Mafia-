@@ -6,6 +6,8 @@ import { openChest } from "../services/chests";
 import ChestSVG from "../components/shop/ChestSVG";
 import ChestOpening from "../components/shop/ChestOpening";
 import AnimatedEmoji from "../components/AnimatedEmoji";
+import { AVATARS } from "../data/avatars";
+import { canUseAvatar, getSelectedAvatar, setSelectedAvatar } from "../services/profile";
 import { toast } from "../services/toast";
 import {
   getWallet,
@@ -23,6 +25,7 @@ import useSeo from '../hooks/useSeo';
 
 const TABS = [
   { id: "chests", label: "Сундуки" },
+  { id: "avatars", label: "Аватарки" },
   { id: "emojis", label: "Эмодзи" },
   { id: "decor", label: "Украшения" },
   { id: "abilities", label: "Способности" },
@@ -119,6 +122,7 @@ export default function Shop() {
       </div>
 
       {tab === "chests" && <ChestsTab wallet={wallet} />}
+      {tab === "avatars" && <AvatarsTab wallet={wallet} onBuy={(a) => buy("avatar", a.id, a.price)} />}
 
       {tab === "emojis" && (
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-4">
@@ -410,6 +414,101 @@ function ChestsTab({ wallet }) {
           }}
         />
       )}
+    </div>
+  );
+}
+
+
+const TIER_LABEL = { admin: "Только для администраторов", support: "Только для саппортов" };
+
+function AvatarsTab({ wallet, onBuy }) {
+  const [selected, setSelected] = useState(getSelectedAvatar());
+  const [, force] = useState(0);
+
+  useEffect(() => {
+    const refresh = () => {
+      setSelected(getSelectedAvatar());
+      force((n) => n + 1);
+    };
+    window.addEventListener("mafia-avatar-changed", refresh);
+    window.addEventListener("mafia-status-changed", refresh);
+    window.addEventListener("mafia-admin-changed", refresh);
+    return () => {
+      window.removeEventListener("mafia-avatar-changed", refresh);
+      window.removeEventListener("mafia-status-changed", refresh);
+      window.removeEventListener("mafia-admin-changed", refresh);
+    };
+  }, []);
+
+  const Card = ({ a, i }) => {
+    const available = canUseAvatar(a);
+    const owned = a.tier !== "shop" || (wallet.ownedAvatars || []).includes(a.id);
+    const equipped = selected === a.src;
+    const exclusive = a.tier === "admin" || a.tier === "support";
+    return (
+      <div
+        className={`noir-card noir-card--hover spotlight flex flex-col items-center p-4 text-center anim-scale-in ${equipped ? "!border-[#d4af37]" : ""}`}
+        style={{ "--i": i }}
+      >
+        <div className="relative">
+          <img
+            src={a.src}
+            alt={a.name}
+            className={`h-32 w-32 object-contain transition duration-500 hover:scale-105 ${!available && exclusive ? "grayscale opacity-40" : ""}`}
+            style={a.tier === "support" ? { filter: available ? "drop-shadow(0 0 14px rgba(52,211,153,0.6))" : undefined } : a.tier === "admin" ? { filter: available ? "drop-shadow(0 0 14px rgba(243,210,122,0.6))" : undefined } : undefined}
+          />
+          {!available && exclusive && <span className="absolute inset-0 flex items-center justify-center text-3xl">🔒</span>}
+        </div>
+        <p className="mt-2 text-sm font-bold text-[#f3e5ab]">{a.name}</p>
+        {exclusive && <span className={`chip mt-1 !text-[9px] ${a.tier === "support" ? "chip--green" : ""}`}>{TIER_LABEL[a.tier]}</span>}
+        <div className="mt-3 w-full">
+          {available && owned ? (
+            <button
+              type="button"
+              disabled={equipped}
+              onClick={() => setSelectedAvatar(a.src)}
+              className={`btn btn-sm w-full ${equipped ? "btn-ghost" : "btn-gold"}`}
+            >
+              {equipped ? "Выбрана" : "Выбрать"}
+            </button>
+          ) : a.tier === "shop" ? (
+            <button type="button" onClick={() => onBuy(a)} disabled={wallet.balance < a.price} className="btn btn-blood btn-sm w-full">
+              {a.price.toLocaleString("ru-RU")} <img src="/tokens.png" alt="" className="h-4 w-4" />
+            </button>
+          ) : (
+            <span className="text-[11px] text-[#a8916c]">Недоступно</span>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const shop = AVATARS.filter((a) => a.tier === "shop");
+  const exclusive = AVATARS.filter((a) => (a.tier === "admin" || a.tier === "support") && a.src.endsWith(".webp"));
+  const free = AVATARS.filter((a) => a.tier === "free" && a.src.endsWith(".webp"));
+
+  return (
+    <div className="space-y-10">
+      <section>
+        <h2 className="font-display text-2xl font-black text-[#f3e5ab]">Коллекция «Закат»</h2>
+        <p className="mt-1 text-sm text-[#a8916c]">Покупаются один раз и остаются навсегда. Выбранную аватарку видят все игроки.</p>
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {shop.map((a, i) => <Card key={a.id} a={a} i={i} />)}
+        </div>
+      </section>
+      <section>
+        <h2 className="font-display text-2xl font-black text-[#f3e5ab]">Эксклюзивные</h2>
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {exclusive.map((a, i) => <Card key={a.id} a={a} i={i} />)}
+        </div>
+      </section>
+      <section>
+        <h2 className="font-display text-2xl font-black text-[#f3e5ab]">Бесплатные</h2>
+        <p className="mt-1 text-sm text-[#a8916c]">Ещё 20 бесплатных персонажей — на главной странице в блоке «Ваш образ».</p>
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {free.map((a, i) => <Card key={a.id} a={a} i={i} />)}
+        </div>
+      </section>
     </div>
   );
 }

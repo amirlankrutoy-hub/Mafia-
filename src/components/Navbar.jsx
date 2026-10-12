@@ -29,6 +29,9 @@ import { updateProfile } from '../services/presence';
 import TeniExchangeModal from './shop/TeniExchangeModal';
 import Logo from './ui/Logo';
 import Avatar from './ui/Avatar';
+import SupportReportModal from './SupportReportModal';
+import { isSupport, onStatusChanged } from '../services/status';
+import { totalUnread, onUnreadChanged } from '../services/dm';
 
 const NAV = [
   { id: 'home', label: 'Главная', icon: faHouse, to: '/' },
@@ -66,6 +69,18 @@ const Navbar = ({ account }) => {
   const [mafioBalance, setMafioBalance] = useState(getBalance());
   const [avatar, setAvatar] = useState(getSelectedAvatar());
   const [requests, setRequests] = useState(0);
+  const [support, setSupport] = useState(isSupport());
+  const [dmUnread, setDmUnread] = useState(totalUnread());
+  const [reportOpen, setReportOpen] = useState(false);
+
+  useEffect(() => {
+    const offStatus = onStatusChanged(() => setSupport(isSupport()));
+    const offDm = onUnreadChanged(() => setDmUnread(totalUnread()));
+    return () => {
+      offStatus();
+      offDm();
+    };
+  }, []);
 
   useEffect(() => {
     const refreshTeni = () => setTeniBalance(getTeniBalance());
@@ -151,6 +166,7 @@ const Navbar = ({ account }) => {
               <div className="text-[11px] text-[#a8916c]">
                 ID <span className="font-mono text-[#d4af37]">{account.id}</span>
                 {admin && <span className="ml-2 chip !py-0 !text-[9px]">Админ</span>}
+                {support && <span className="ml-2 chip chip--green !py-0 !text-[9px]">Саппорт</span>}
               </div>
             </div>
           </div>
@@ -196,11 +212,17 @@ const Navbar = ({ account }) => {
                 {isActive && <span className="absolute left-0 top-1/2 h-6 w-[3px] -translate-y-1/2 rounded-full bg-[#f3d27a] shadow-[0_0_10px_#d4af37]" />}
                 <FontAwesomeIcon icon={item.icon} className="w-4 transition-transform duration-300 group-hover:scale-110" />
                 {item.label}
-                {item.id === 'friends' && <Badge count={requests} />}
+                {item.id === 'friends' && <Badge count={requests + dmUnread} />}
               </>
             )}
           </NavLink>
         ))}
+        {support && (
+          <button type="button" onClick={() => setReportOpen(true)} className="group relative flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-left text-[13px] font-bold tracking-wide text-emerald-300 transition hover:bg-emerald-500/10">
+            <FontAwesomeIcon icon={faShieldHalved} className="w-4" />
+            Связь с админом
+          </button>
+        )}
         {admin && (
           <NavLink to="/admin" className={linkClass}>
             <FontAwesomeIcon icon={faShieldHalved} className="w-4" />
@@ -244,7 +266,7 @@ const Navbar = ({ account }) => {
     { to: '/', icon: faHouse, label: 'Главная' },
     { to: '/top', icon: faRankingStar, label: 'Топ' },
     { action: goPlay, icon: faPlay, label: 'Играть', main: true },
-    { to: '/friends', icon: faUserGroup, label: 'Друзья', badge: requests },
+    { to: '/friends', icon: faUserGroup, label: 'Друзья', badge: requests + dmUnread },
     { action: () => setIsDrawerOpen(true), icon: faBars, label: 'Меню' }
   ];
 
@@ -344,6 +366,7 @@ const Navbar = ({ account }) => {
 
       {showTopUp && <TopUpModal onClose={() => setShowTopUp(false)} playerName={account?.name} accountId={account?.id} />}
       {showTeniExchange && <TeniExchangeModal onClose={() => setShowTeniExchange(false)} />}
+      <SupportReportModal open={reportOpen} onClose={() => setReportOpen(false)} />
     </>
   );
 };

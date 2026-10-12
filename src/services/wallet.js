@@ -66,6 +66,7 @@ function defaultState() {
     ownedRoles: [...FREE_ROLES],
     ownedEmojis: [],
     ownedDecorations: [],
+    ownedAvatars: [],
     equippedDecoration: null,
     redeemedCodes: [],
     isAdmin: false
@@ -148,7 +149,10 @@ export function purchase({ kind, id, price }) {
       ? "ownedRoles"
       : kind === "emoji"
       ? "ownedEmojis"
+      : kind === "avatar"
+      ? "ownedAvatars"
       : "ownedDecorations";
+  if (!state[listKey]) state[listKey] = [];
 
   if (state[listKey].includes(id)) {
     return { success: false, message: "Уже куплено" };

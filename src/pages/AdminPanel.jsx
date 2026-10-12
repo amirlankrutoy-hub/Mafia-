@@ -11,7 +11,8 @@ import {
   faRightFromBracket,
   faMagnifyingGlass,
   faRotate,
-  faDoorClosed
+  faDoorClosed,
+  faHeadset
 } from "@fortawesome/free-solid-svg-icons";
 import roles from "../data/roles";
 import {
@@ -30,7 +31,11 @@ import {
   adminEnableRole,
   adminAnnounce,
   getDisabledRoles,
-  getRoleDisableLabel
+  getRoleDisableLabel,
+  adminSetSupport,
+  adminSupports,
+  adminReports,
+  adminReportDone
 } from "../services/admin";
 import { toast } from "../services/toast";
 import Avatar from "../components/ui/Avatar";
@@ -42,6 +47,7 @@ const TABS = [
   { id: "players", label: "Игроки", icon: faUsers },
   { id: "bans", label: "Баны", icon: faBan },
   { id: "roles", label: "Роли", icon: faMasksTheater },
+  { id: "support", label: "Саппорты", icon: faHeadset },
   { id: "announce", label: "Объявление", icon: faBullhorn }
 ];
 
@@ -80,7 +86,7 @@ export default function AdminPanel() {
   useSeo({ title: "Администрирование", noindex: true });
   const navigate = useNavigate();
   const [authed, setAuthed] = useState(isAdmin());
-  const [tab, setTab] = useState("overview");
+  const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get("tab") || "overview");
 
   if (!authed) return <AdminLogin onDone={() => setAuthed(true)} />;
 
@@ -121,6 +127,7 @@ export default function AdminPanel() {
         {tab === "players" && <Players />}
         {tab === "bans" && <Bans />}
         {tab === "roles" && <RolesTab />}
+        {tab === "support" && <SupportTab />}
         {tab === "announce" && <Announce />}
       </div>
     </div>
@@ -351,6 +358,7 @@ function PlayerCard({ id }) {
           <h3 className="font-display text-2xl font-bold text-[#f3e5ab]">{p.name}</h3>
           <p className="font-mono text-sm text-[#a8916c]">ID {p.id}</p>
           {p.online && p.roomCode && <span className="chip mt-1">В комнате {p.roomCode}</span>}
+          {p.support && <span className="chip chip--green mt-1 ml-1">Саппорт</span>}
         </div>
       </div>
       <div className="mt-5 grid grid-cols-4 gap-2 text-center">
@@ -378,6 +386,16 @@ function PlayerCard({ id }) {
       )}
 
       <div className="mt-5 flex flex-wrap gap-2">
+        <button
+          onClick={async () => {
+            const res = await adminSetSupport(id, !p.support);
+            notify(res);
+            load();
+          }}
+          className={`btn btn-sm ${p.support ? "btn-ghost" : "btn-gold"}`}
+        >
+          <FontAwesomeIcon icon={faHeadset} /> {p.support ? "Снять саппорта" : "Назначить саппортом"}
+        </button>
         {data.ban ? (
           <button
             onClick={async () => {
@@ -584,6 +602,107 @@ function Announce() {
         >
           <FontAwesomeIcon icon={faBullhorn} /> Отправить
         </button>
+      </div>
+    </div>
+  );
+}
+
+
+const REPORT_TYPES = { bug: "🐞 Баг", ban: "⛔ Нарушитель", other: "💬 Другое" };
+
+function SupportTab() {
+  const [supports, setSupports] = useState(null);
+  const [reports, setReports] = useState(null);
+
+  const load = useCallback(async () => {
+    const [s, r] = await Promise.all([adminSupports(), adminReports()]);
+    if (s.success) setSupports(s.list);
+    if (r.success) setReports(r.list);
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  return (
+    <div className="grid gap-6 lg:grid-cols-[1fr_1.4fr]">
+      <div className="noir-card p-5">
+        <h2 className="font-display text-xl font-bold text-[#f3d27a]">Саппорты</h2>
+        <p className="mt-1 text-xs text-[#a8916c]">
+          Назначить — во вкладке «Игроки»: найдите игрока и нажмите «Назначить саппортом». Саппорт получает 3000 Токенов,
+          зелёную аватарку и кнопку «Связь с админом».
+        </p>
+        <div className="mt-4 space-y-2">
+          {supports === null ? (
+            <p className="text-sm text-[#a8916c] animate-pulse">Загрузка…</p>
+          ) : supports.length === 0 ? (
+            <p className="text-sm text-[#a8916c]">Саппортов пока нет.</p>
+          ) : (
+            supports.map((p) => (
+              <div key={p.id} className="flex items-center gap-3 rounded-xl border border-emerald-500/20 bg-black/30 p-3">
+                <Avatar src={p.icon} size={36} online={p.online} />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-bold text-[#f3e5ab]">{p.name}</div>
+                  <div className="font-mono text-[11px] text-[#a8916c]">#{p.id} · с {new Date(p.at).toLocaleDateString("ru-RU")}</div>
+                </div>
+                <button
+                  onClick={async () => {
+                    notify(await adminSetSupport(p.id, false));
+                    load();
+                  }}
+                  className="btn btn-ghost btn-sm"
+                >
+                  Снять
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      <div className="noir-card p-5">
+        <div className="flex items-center justify-between">
+          <h2 className="font-display text-xl font-bold text-[#f3d27a]">Сообщения саппортов</h2>
+          <button onClick={load} className="btn btn-ghost btn-sm">
+            <FontAwesomeIcon icon={faRotate} />
+          </button>
+        </div>
+        <div className="mt-4 max-h-[60vh] space-y-2 overflow-y-auto pr-1">
+          {reports === null ? (
+            <p className="text-sm text-[#a8916c] animate-pulse">Загрузка…</p>
+          ) : reports.length === 0 ? (
+            <p className="text-sm text-[#a8916c]">Сообщений пока нет.</p>
+          ) : (
+            reports.map((r) => (
+              <div key={r.id} className={`rounded-xl border p-3 ${r.done ? "border-white/5 bg-black/20 opacity-60" : "border-[#d4af37]/25 bg-black/35"}`}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="chip">{REPORT_TYPES[r.type] || r.type}</span>
+                  <span className="text-[11px] text-[#a8916c]">{new Date(r.at).toLocaleString("ru-RU")}</span>
+                </div>
+                <p className="mt-2 whitespace-pre-wrap text-sm text-[#e6d5bc]">{r.text}</p>
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-[#a8916c]">
+                  <span>
+                    От: <b className="text-[#f3e5ab]">{r.fromName}</b> <span className="font-mono">#{r.from}</span>
+                    {r.targetId && (
+                      <>
+                        {" "}· нарушитель: <span className="font-mono text-red-300">#{r.targetId}</span>
+                      </>
+                    )}
+                  </span>
+                  <button
+                    onClick={async () => {
+                      await adminReportDone(r.id, !r.done);
+                      load();
+                    }}
+                    className="btn btn-ghost btn-sm"
+                  >
+                    {r.done ? "Вернуть" : "Готово"}
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
     </div>
   );

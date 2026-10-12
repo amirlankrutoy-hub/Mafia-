@@ -379,6 +379,7 @@ function lobbyPlayers(room) {
     return room.players.map((p) => ({
         id: p.id,
         accountId: p.accountId || null,
+        support: isSupportAcc(p.accountId),
         name: p.name,
         avatar: p.avatar,
         ready: !!p.ready,
@@ -680,6 +681,33 @@ function mafiaTeam(room) {
 }
 
 // ==========================
+// Саппорты (назначает админ)
+// ==========================
+const SUPPORT_BONUS = 3000;
+const isSupportAcc = (id) => !!(id && db.supports[id]);
+
+function sendStatus(accountId) {
+    emitToAccount(accountId, "account:status", { support: isSupportAcc(accountId) });
+    const sup = db.supports[accountId];
+    // Бонус 3000 Токенов — один раз, при первом входе после назначения
+    if (sup && !sup.granted && isOnline(accountId)) {
+        sup.granted = true;
+        store.save();
+        emitToAccount(accountId, "you-received-currency", { amount: SUPPORT_BONUS, from: "support" });
+    }
+}
+
+function adminSockets() {
+    return [...io.sockets.sockets.values()].filter((s) => s.data.isAdmin);
+}
+
+// ==========================
+// Личные сообщения друзей
+// ==========================
+const DM_LIMIT = 60;
+const dmKey = (a, b) => [a, b].sort().join(":");
+
+// ==========================
 // Оплата звёздами Telegram
 // ==========================
 function deliverTopups(accountId) {
@@ -765,6 +793,7 @@ io.on("connection", (socket) => {
         const reqs = requestsFor(accountId);
         if (reqs.incoming.length) socket.emit("friend:requests", reqs);
         deliverTopups(accountId);
+        sendStatus(accountId);
     });
 
     on(socket, "account:check-name", ({ name, accountId } = {}, cb) => {
@@ -1572,6 +1601,69 @@ io.on("connection", (socket) => {
     });
 
     // ==========================
+    // Саппорт: сообщить администратору (баг, нарушитель, другое)
+    // ==========================
+    on(socket, "support:report", ({ type, text, targetId } = {}, cb) => {
+        const done = ack(cb);
+        const myId = me();
+        if (!isSupportAcc(myId)) return done({ success: false, message: "Доступно только саппортам" });
+        const msg = cleanText(text, 600);
+        if (msg.length < 5) return done({ success: false, message: "Опишите подробнее" });
+        const now = Date.now();
+        if (socket.data.lastReportAt && now - socket.data.lastReportAt < 15000) {
+            return done({ success: false, message: "Подождите немного перед следующим сообщением" });
+        }
+        socket.data.lastReportAt = now;
+        const report = {
+            id: `r${now}${Math.random().toString(36).slice(2, 6)}`,
+            type: ["bug", "ban", "other"].includes(type) ? type : "other",
+            text: msg,
+            targetId: isAccountId(String(targetId || "")) ? String(targetId) : null,
+            from: myId,
+            fromName: profileOf(myId)?.name || `#${myId}`,
+            at: now,
+            done: false
+        };
+        db.reports = [report, ...(db.reports || [])].slice(0, 300);
+        store.save();
+        adminSockets().forEach((s) => s.emit("admin:new-report", report));
+        console.log(`📨 Сообщение от саппорта ${report.fromName}: [${report.type}] ${msg.slice(0, 80)}`);
+        done({ success: true });
+    });
+
+    // ==========================
+    // Личные сообщения друзьям
+    // ==========================
+    on(socket, "dm:send", ({ to, text } = {}, cb) => {
+        const done = ack(cb);
+        const myId = me();
+        const other = String(to || "");
+        if (!myId) return done({ success: false, message: "Сначала войдите в аккаунт" });
+        if (!areFriends(myId, other)) return done({ success: false, message: "Писать можно только друзьям" });
+        if (activeBan(myId)) return done({ success: false, message: "Вы заблокированы" });
+        const msg = cleanText(text, 500);
+        if (!msg) return done({ success: false });
+        const now = Date.now();
+        if (socket.data.lastDmAt && now - socket.data.lastDmAt < 600) return done({ success: false, message: "Не так быстро" });
+        socket.data.lastDmAt = now;
+        const key = dmKey(myId, other);
+        const message = { id: `${now}-${Math.random().toString(36).slice(2, 6)}`, from: myId, to: other, text: msg, at: now };
+        db.dms[key] = [...(db.dms[key] || []), message].slice(-DM_LIMIT);
+        store.save();
+        const payload = { ...message, fromName: profileOf(myId)?.name || `#${myId}`, fromIcon: profileOf(myId)?.icon || null };
+        emitToAccount(other, "dm:message", payload);
+        emitToAccount(myId, "dm:message", payload);
+        done({ success: true, message: payload });
+    });
+
+    on(socket, "dm:history", ({ with: other } = {}, cb) => {
+        if (typeof cb !== "function") return;
+        const myId = me();
+        if (!myId || !areFriends(myId, String(other || ""))) return cb([]);
+        cb(db.dms[dmKey(myId, String(other))] || []);
+    });
+
+    // ==========================
     // Покупка Токенов за звёзды
     // ==========================
     on(socket, "topup:packages", (cb) => {
@@ -1658,7 +1750,7 @@ io.on("connection", (socket) => {
         if (!profileOf(id)) return cb({ success: false, message: "Игрок с таким ID не найден" });
         cb({
             success: true,
-            player: { ...presenceStatus(id), friends: (db.friends[id] || []).length, lastSeen: profileOf(id).lastSeen || null },
+            player: { ...presenceStatus(id), friends: (db.friends[id] || []).length, lastSeen: profileOf(id).lastSeen || null, support: isSupportAcc(id) },
             ban: activeBan(id)
         });
     });
@@ -1730,6 +1822,44 @@ io.on("connection", (socket) => {
         if (!isOnline(id)) return cb({ success: false, message: "Игрок не в сети — Токены можно выдать только онлайн" });
         emitToAccount(id, "you-received-currency", { amount: value, from: "admin" });
         cb({ success: true, message: `Выдано ${value} Токенов` });
+    });
+
+    on(socket, "admin:set-support", ({ accountId, support } = {}, cb) => {
+        if (!requireAdmin(cb)) return;
+        const id = String(accountId || "").trim();
+        if (!profileOf(id)) return cb({ success: false, message: "Игрок с таким ID не найден" });
+        if (support) {
+            if (!db.supports[id]) db.supports[id] = { at: Date.now(), granted: false };
+        } else {
+            delete db.supports[id];
+        }
+        store.save();
+        sendStatus(id);
+        if (support && isOnline(id)) {
+            emitToAccount(id, "announcement", { text: "Вы назначены саппортом Mafia Play! Вам доступны эксклюзивная аватарка и связь с администрацией." });
+        }
+        // обновляем значок в лобби, если игрок сейчас в комнате
+        const room = presence[id]?.roomCode && RoomManager.getRoom(presence[id].roomCode);
+        if (room) broadcastLobby(room);
+        cb({ success: true, message: support ? `${profileOf(id).name} теперь саппорт` : "Статус саппорта снят" });
+    });
+
+    on(socket, "admin:supports", (cb) => {
+        if (!requireAdmin(cb)) return;
+        cb({ success: true, list: Object.entries(db.supports).map(([id, s]) => ({ ...presenceStatus(id), at: s.at })) });
+    });
+
+    on(socket, "admin:reports", (cb) => {
+        if (!requireAdmin(cb)) return;
+        cb({ success: true, list: db.reports || [] });
+    });
+
+    on(socket, "admin:report-done", ({ id, done: isDone } = {}, cb) => {
+        if (!requireAdmin(cb)) return;
+        const r = (db.reports || []).find((x) => x.id === id);
+        if (r) r.done = !!isDone;
+        store.save();
+        cb({ success: true });
     });
 
     on(socket, "admin:close-room", (code, cb) => {

@@ -19,6 +19,7 @@ import { useMusic } from "../context/MusicContext";
 import DecorationSVG from "./shop/DecorationSVG";
 import { sendFriendRequest, getFriendsList, getFriendRequests, inviteFriend } from "../services/presence";
 import { toast } from "../services/toast";
+import { isAdmin, adminGive } from "../services/admin";
 import Avatar from "./ui/Avatar";
 import ChatPanel from "./ChatPanel";
 import EmojiButton from "./EmojiButton";
@@ -27,7 +28,7 @@ import AnimatedEmoji from "./AnimatedEmoji";
 const ALL_DECORATIONS = [...DECORATIONS, ADMIN_DECORATION];
 const getDecoration = (id) => (id ? ALL_DECORATIONS.find((d) => d.id === id) || null : null);
 
-function Seat({ p, i, emoji, isMe, isMayorView, friendState, onAddFriend, onKick }) {
+function Seat({ p, i, emoji, isMe, isMayorView, friendState, onAddFriend, onKick, adminView, onGive }) {
   const decoration = getDecoration(p.decoration);
   return (
     <div
@@ -56,6 +57,7 @@ function Seat({ p, i, emoji, isMe, isMayorView, friendState, onAddFriend, onKick
           </span>
         )}
       </div>
+      {p.support && <span className="chip chip--green mt-2 !text-[9px]">Саппорт</span>}
       <p className="mt-3 w-full truncate font-bold text-[#f3e5ab]">
         {p.name}
         {isMe && <span className="ml-1 text-xs font-normal text-[#a8916c]">(вы)</span>}
@@ -64,8 +66,13 @@ function Seat({ p, i, emoji, isMe, isMayorView, friendState, onAddFriend, onKick
         {p.connected === false ? "Переподключается…" : p.ready ? "Готов" : "Ждёт"}
       </p>
 
-      {(friendState || isMayorView) && (
+      {(friendState || isMayorView || (adminView && p.accountId && !isMe)) && (
         <div className="mt-3 flex w-full flex-wrap justify-center gap-1.5">
+          {adminView && p.accountId && !isMe && (
+            <button type="button" onClick={onGive} className="btn btn-gold btn-sm !px-2.5" title="Выдать Токены (админ)">
+              <img src="/tokens.png" alt="" className="h-4 w-4" />+
+            </button>
+          )}
           {friendState === "friend" && <span className="chip chip--green"><FontAwesomeIcon icon={faCheck} /> Друг</span>}
           {friendState === "sent" && <span className="chip"><FontAwesomeIcon icon={faClock} /> Заявка</span>}
           {friendState === "none" && (
@@ -291,6 +298,13 @@ export default function Lobby({
               isMayorView={isMayor}
               friendState={friendState(p.accountId)}
               onAddFriend={() => addFriend(p)}
+              adminView={isAdmin()}
+              onGive={async () => {
+                const amount = Number(window.prompt(`Сколько Токенов выдать игроку «${p.name}»?`, "1000"));
+                if (!amount || amount < 1) return;
+                const res = await adminGive(p.accountId, amount);
+                toast({ kind: res?.success ? "success" : "error", text: res?.success ? `${p.name}: +${amount} Токенов` : res?.message });
+              }}
               onKick={() => {
                 if (window.confirm(`Выгнать ${p.name}?`)) onKick?.(p.id);
               }}

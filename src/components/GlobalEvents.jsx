@@ -4,6 +4,10 @@ import { socket } from "../socket";
 import { toast } from "../services/toast";
 import { credit } from "../services/wallet";
 import { applyTopup } from "../services/topup";
+import { setAccountStatus } from "../services/status";
+import { addUnread } from "../services/dm";
+import { isAdmin } from "../services/admin";
+import { onDirectMessage } from "../services/presence";
 import { resumeAdmin, setDisabledRolesCache } from "../services/admin";
 import {
   announcePresence,
@@ -131,12 +135,40 @@ export default function GlobalEvents({ account }) {
 
     const onAnnounce = ({ text }) =>
       toast({ kind: "announce", title: "Объявление администрации", text, duration: 15000 });
-    const onCurrency = ({ amount }) => {
+    const onCurrency = ({ amount, from }) => {
       if (amount > 0) {
         credit(amount);
-        toast({ kind: "money", title: `+${amount} Токенов`, text: "Подарок от администрации" });
+        toast({
+          kind: "money",
+          title: `+${amount} Токенов`,
+          text: from === "support" ? "Бонус за назначение саппортом. Добро пожаловать в команду!" : "Подарок от администрации"
+        });
       }
     };
+    const onStatus = (st) => setAccountStatus(st);
+    const onReport = (r) => {
+      if (!isAdmin()) return;
+      toast({
+        kind: "announce",
+        title: `Сообщение от саппорта ${r.fromName}`,
+        text: r.text.slice(0, 140),
+        duration: 12000,
+        actions: [{ label: "Открыть", onClick: () => navigate("/admin?tab=support") }]
+      });
+    };
+    const offDm = onDirectMessage((m) => {
+      const me = accountRef.current?.id;
+      if (!me || m.from === me) return;
+      if (!addUnread(m.from)) return; // чат с этим другом сейчас открыт
+      toast({
+        kind: "friend",
+        title: `Сообщение от ${m.fromName}`,
+        text: m.text.slice(0, 120),
+        image: m.fromIcon,
+        duration: 8000,
+        actions: [{ label: "Ответить", onClick: () => navigate(`/friends?chat=${m.from}`) }]
+      });
+    });
     // Оплата звёздами подтверждена сервером — зачисляем Токены
     const onTopup = (data) => applyTopup(data);
     const onBanned = (info) => setBan(info);
@@ -147,6 +179,8 @@ export default function GlobalEvents({ account }) {
     socket.on("banned", onBanned);
     socket.on("unbanned", onUnbanned);
     socket.on("topup:success", onTopup);
+    socket.on("account:status", onStatus);
+    socket.on("admin:new-report", onReport);
 
     return () => {
       offs.forEach((off) => off());
@@ -155,6 +189,9 @@ export default function GlobalEvents({ account }) {
       socket.off("banned", onBanned);
       socket.off("unbanned", onUnbanned);
       socket.off("topup:success", onTopup);
+      socket.off("account:status", onStatus);
+      socket.off("admin:new-report", onReport);
+      offDm();
     };
   }, [joinRoom, navigate]);
 

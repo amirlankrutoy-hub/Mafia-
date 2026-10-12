@@ -15,7 +15,7 @@ import { DECORATIONS, ADMIN_DECORATION } from '../data/shopData';
 import roles from '../data/roles';
 import { ownsDecoration, getEquippedDecoration, setEquippedDecoration, getWallet } from '../services/wallet';
 import { loginAdmin, isAdmin } from '../services/admin';
-import { AVATAR_LIST, getSelectedAvatar, setSelectedAvatar } from '../services/profile';
+import { getAvailableAvatars, getSelectedAvatar, setSelectedAvatar } from '../services/profile';
 import { SOCKET_URL } from '../socket';
 import DecorationSVG from '../components/shop/DecorationSVG';
 import Logo from '../components/ui/Logo';
@@ -83,17 +83,27 @@ function Home({ userName }) {
     };
   }, []);
 
-  const [avatarIndex, setAvatarIndex] = useState(() => Math.max(0, AVATAR_LIST.indexOf(getSelectedAvatar())));
+  const [avatar, setAvatarState] = useState(getSelectedAvatar());
+  const [, refreshAvatars] = useState(0);
   const [decorId, setDecorId] = useState(getEquippedDecoration());
   const [wallet, setWallet] = useState(getWallet());
   const [avatarKey, setAvatarKey] = useState(0);
 
   useEffect(() => {
     const refresh = () => setWallet(getWallet());
+    const refreshList = () => refreshAvatars((n) => n + 1);
     window.addEventListener('mafia-wallet-changed', refresh);
-    return () => window.removeEventListener('mafia-wallet-changed', refresh);
+    window.addEventListener('mafia-status-changed', refreshList);
+    window.addEventListener('mafia-admin-changed', refreshList);
+    return () => {
+      window.removeEventListener('mafia-wallet-changed', refresh);
+      window.removeEventListener('mafia-status-changed', refreshList);
+      window.removeEventListener('mafia-admin-changed', refreshList);
+    };
   }, []);
 
+  const AVATAR_LIST = getAvailableAvatars();
+  const avatarIndex = Math.max(0, AVATAR_LIST.indexOf(avatar));
   const currentAvatar = AVATAR_LIST[avatarIndex];
   const equippedDecoration = ALL_DECORATIONS.find((d) => d.id === decorId);
   const ownedDecorations = ALL_DECORATIONS.filter(
@@ -104,10 +114,9 @@ function Home({ userName }) {
 
   const changeAvatar = (dir) => {
     const next = (avatarIndex + dir + AVATAR_LIST.length) % AVATAR_LIST.length;
-    setAvatarIndex(next);
+    setAvatarState(AVATAR_LIST[next]);
     setAvatarKey((k) => k + 1);
     setSelectedAvatar(AVATAR_LIST[next]);
-    window.dispatchEvent(new CustomEvent('mafia-avatar-changed'));
   };
 
   const changeDecoration = (dir) => {

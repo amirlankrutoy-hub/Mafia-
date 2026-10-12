@@ -33,6 +33,9 @@ const EMPTY = () => ({
   adminTokens: {},
   orders: {}, // заказы Токенов за звёзды Telegram
   pendingTopups: {}, // accountId -> [{ orderId, amount }] — ещё не доставлены на сайт
+  supports: {}, // accountId -> { at, granted } — саппорты, назначенные админом
+  reports: [], // сообщения саппортов администратору
+  dms: {}, // "id1:id2" -> [{ from, text, at }] — личные сообщения друзей
   stats: { gamesPlayed: 0, roomsCreated: 0, starsEarned: 0, topups: 0 }
 });
 
@@ -43,7 +46,9 @@ let dirty = false;
 
 function merge(data) {
   for (const key of Object.keys(state)) {
-    if (data && data[key] && typeof data[key] === "object") {
+    if (data && Array.isArray(data[key])) {
+      state[key] = data[key];
+    } else if (data && data[key] && typeof data[key] === "object") {
       state[key] = { ...state[key], ...data[key] };
     }
   }

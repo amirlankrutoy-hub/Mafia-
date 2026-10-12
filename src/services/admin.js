@@ -135,3 +135,9 @@ export function bumpSiteVisit() {}
 export function isBanned() {
   return false;
 }
+
+// ---------- Саппорты и их сообщения ----------
+export const adminSetSupport = (accountId, support) => adminCall("admin:set-support", { accountId, support });
+export const adminSupports = () => adminCall("admin:supports");
+export const adminReports = () => adminCall("admin:reports");
+export const adminReportDone = (id, done) => adminCall("admin:report-done", { id, done });
