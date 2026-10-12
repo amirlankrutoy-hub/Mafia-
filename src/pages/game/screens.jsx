@@ -503,7 +503,7 @@ export function WaitingReady({ myRole, readyCount, total, readySent, onReady, is
         r && (
           <>
             <p className="eyebrow anim-fade-in">Ваша роль</p>
-            <img src={r.image} alt={r.name} className="mt-4 h-56 w-44 rounded-3xl object-cover ring-2 ring-[#f3d27a]/70 shadow-[0_0_60px_-10px_rgba(212,175,55,0.7)] anim-pop" />
+            <img src={r.image} alt={r.name} className="mt-4 aspect-[2/3] w-44 rounded-3xl object-cover ring-2 ring-[#f3d27a]/70 shadow-[0_0_60px_-10px_rgba(212,175,55,0.7)] anim-pop" />
             <h1 className="mt-4 font-display text-4xl font-black gold-text">{r.name}</h1>
             <p className="mt-2 max-w-md text-center text-sm text-[#c9b48f]">{r.description}</p>
             {team && team.length > 1 && (

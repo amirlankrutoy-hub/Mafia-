@@ -381,7 +381,7 @@ function ChestsTab({ wallet }) {
                 className="relative overflow-hidden rounded-2xl anim-scale-in"
                 style={{ "--i": i, outline: `2px solid ${owned ? rar.color : "rgba(255,255,255,0.08)"}`, boxShadow: owned ? `0 0 25px -5px ${rar.glow}` : "none" }}
               >
-                <img src={role.image} alt={role.name} className={`h-44 w-full object-cover ${owned ? "" : "grayscale opacity-35"}`} />
+                <img src={role.image} alt={role.name} className={`aspect-[2/3] w-full object-cover ${owned ? "" : "grayscale opacity-35"}`} />
                 <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-transparent" />
                 {!owned && <span className="absolute left-1/2 top-1/3 -translate-x-1/2 text-3xl">🔒</span>}
                 <div className="absolute inset-x-0 bottom-0 p-2.5">

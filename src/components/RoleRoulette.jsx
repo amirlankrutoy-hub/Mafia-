@@ -55,12 +55,12 @@ export default function RoleRoulette({ role, onFinish }) {
 
       <div className="relative mt-6 [perspective:1200px]">
         <div
-          className="relative h-[min(62vh,440px)] w-[min(72vw,310px)] transition-transform duration-[900ms] [transform-style:preserve-3d]"
+          className="relative aspect-[2/3] w-[min(68vw,300px,42vh)] transition-transform duration-[900ms] [transform-style:preserve-3d]"
           style={{ transform: revealed ? "rotateY(360deg) scale(1.04)" : "rotateY(0deg)" }}
         >
           <div className="absolute inset-0 overflow-hidden rounded-3xl ring-2 ring-[#d4af37]/70 shadow-[0_30px_80px_-20px_rgba(0,0,0,1)] [backface-visibility:hidden]">
             <img key={shown.id} src={shown.image} alt={shown.name} className={`h-full w-full object-cover ${revealed ? "" : "blur-[1px] brightness-75"}`} />
-            <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
             <div className="logo-sheen !rounded-3xl ![mask-image:none]" />
           </div>
         </div>

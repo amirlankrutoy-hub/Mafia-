@@ -5,7 +5,7 @@ const roles = [
     name: 'Доктор',
     category: 'civilians',
     team: 'Мирные жители',
-    image: '/Doctor.jpg',
+    image: '/roles/doctor.webp',
     description: 'Лечит одного из игроков ночью, спасая от выстрела.',
     ability: 'Спасает выбранного игрока от гибели ночью.'
   },
@@ -14,7 +14,7 @@ const roles = [
     name: 'Красотка',
     category: 'civilians',
     team: 'Мирные жители',
-    image: '/Krasotka.jpg',
+    image: '/roles/krasotka.webp',
     description: 'Соблазняет одного игрока на ночь. Если кто-то попытается её убить, то умрёт соблазнённый, а не она.',
     ability: 'Соблазняет любого персонажа на одну ночь.'
   },
@@ -23,7 +23,7 @@ const roles = [
     name: 'Мафиози',
     category: 'mafia',
     team: 'Мафия',
-    image: '/Mafia.jpg',
+    image: '/roles/mafia.webp',
     description: 'Член преступной группировки, ночью выбирает жертву вместе с семьёй.',
     ability: 'Участвует в ночном голосовании мафии — жертву выбирает большинство.'
   },
@@ -32,7 +32,7 @@ const roles = [
     name: 'Маньяк',
     category: 'neutrals',
     team: 'Одиночка',
-    image: '/Manyak.jpg',
+    image: '/roles/manyak.webp',
     description: 'Играет сам за себя, совершает убийства каждую ночь.',
     ability: 'Убивает любого игрока каждую ночь.'
   },
@@ -41,7 +41,7 @@ const roles = [
     name: 'Обыватель',
     category: 'civilians',
     team: 'Мирные жители',
-    image: '/Obivatel.jpg',
+    image: '/roles/obivatel.webp',
     description: 'Обычный житель города без особых ночных умений. Его главное оружие — дедукция и голос на дневном голосовании.',
     ability: 'Участвует в дневном голосовании жителей.'
   },
@@ -50,7 +50,7 @@ const roles = [
     name: 'Крёстный отец',
     category: 'mafia',
     team: 'Мафия',
-    image: '/Otez.jpg',
+    image: '/roles/otez.webp',
     description: 'Глава мафии: вместе с семьёй выбирает жертву, а затем блокирует голос одного из игроков.',
     ability: 'Лишает игрока голоса на дневном голосовании. При равенстве голосов мафии решает он.'
   },
@@ -59,7 +59,7 @@ const roles = [
     name: 'Поклонница',
     category: 'neutrals',
     team: 'Нейтралы',
-    image: '/Poklonniza.jpg',
+    image: '/roles/poklon.webp',
     description: 'Следит за выбранным игроком и узнаёт его роль и действия. Побеждает, если доживёт до конца вместе со своим избранником.',
     ability: 'Узнаёт роль избранника и к кому он ходил ночью.'
   },
@@ -68,7 +68,7 @@ const roles = [
     name: 'Потрошитель',
     category: 'neutrals',
     team: 'Одиночка',
-    image: '/Potroshitel.jpg',
+    image: '/roles/potroshitel.webp',
     description: 'Опасный персонаж, может устранять любых игроков с активной ролью. Обывателей убивать не может.',
     ability: 'Убивает всех, кроме обывателей.'
   },
@@ -77,7 +77,7 @@ const roles = [
     name: 'Шериф',
     category: 'civilians',
     team: 'Мирные жители',
-    image: '/Sherif.jpg',
+    image: '/roles/sherif.webp',
     description: 'Ночью может устранить выбранного игрока.',
     ability: 'Устраняет выбранного игрока ночью.'
   },
@@ -86,7 +86,7 @@ const roles = [
     name: 'Стукач',
     category: 'neutrals',
     team: 'Одиночка',
-    image: '/Stukach.jpg',
+    image: '/roles/stukach.webp',
     description: 'Передаёт ценную информацию одной из сторон. Выигрывает вместе с той стороной, которой помог.',
     ability: 'Узнаёт роль игрока и раскрывает его сторону городу или мафии.'
   },
@@ -95,7 +95,7 @@ const roles = [
     name: 'Вор',
     category: 'mafia',
     team: 'Мафия',
-    image: '/Vor.jpg',
+    image: '/roles/vor.webp',
     description: 'Ночной специалист мафии, блокирует голос выбранного игрока на следующем голосовании.',
     ability: 'Блокирует голос игрока. Просыпается сразу после Крёстного отца.'
   },

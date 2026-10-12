@@ -818,7 +818,7 @@ useEffect(() => {
             <div className="flex flex-col items-center justify-center space-y-2 pt-2">
               <div className="relative">
                 <img
-                  src="/Otez.jpg"
+                  src="/roles/otez.webp"
                   alt="Крёстный Отец"
                   className="w-24 h-24 sm:w-36 sm:h-36 object-cover rounded-full border-4 border-[#d4af37] shadow-[0_0_20px_rgba(212,175,55,0.6)]"
                   onError={(e) => {

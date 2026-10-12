@@ -42,11 +42,11 @@ function RoleDetail() {
         {/* ФОНОВЫЙ ЗНАЧЕК МАКЕТА */}
         <div className="flex flex-col gap-8 md:flex-row items-center md:items-start">
           {/* ИЗОБРАЖЕНИЕ ПЕРСОНАЖА */}
-          <div className="relative h-96 w-64 shrink-0 overflow-hidden rounded-xl border-2 border-[#d4af37]/50 bg-black shadow-2xl">
+          <div className="relative aspect-[2/3] w-64 shrink-0 overflow-hidden rounded-xl border-2 border-[#d4af37]/50 bg-black shadow-2xl">
             <img 
               src={role.image} 
               alt={role.name} 
-              className="h-full w-full object-cover object-top"
+              className="h-full w-full object-cover"
             />
           </div>
 

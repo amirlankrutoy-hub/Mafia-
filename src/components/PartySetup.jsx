@@ -94,7 +94,7 @@ export default function PartySetup({ players, onStart, onClose }) {
                       <img
                         src={role.image}
                         alt={role.name}
-                        className={`h-44 w-full object-cover transition duration-700 group-hover:scale-105 sm:h-52 ${owned ? "" : "grayscale opacity-40"}`}
+                        className={`aspect-[2/3] w-full object-cover transition duration-700 group-hover:scale-105 ${owned ? "" : "grayscale opacity-40"}`}
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent" />
                       {count > 0 && (

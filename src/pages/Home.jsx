@@ -202,7 +202,7 @@ function Home({ userName }) {
               <Link
                 key={i}
                 to={`/role/${r.id}`}
-                className="group relative h-64 w-44 shrink-0 overflow-hidden rounded-2xl ring-1 ring-[#d4af37]/25 transition hover:ring-[#f3d27a]/70"
+                className="group relative aspect-[2/3] w-44 shrink-0 overflow-hidden rounded-2xl ring-1 ring-[#d4af37]/25 transition hover:ring-[#f3d27a]/70"
               >
                 <img src={r.image} alt={r.name} loading="lazy" className="h-full w-full object-cover transition duration-700 group-hover:scale-110" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-transparent" />

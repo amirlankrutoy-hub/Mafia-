@@ -17,7 +17,7 @@ function RewardCard({ reward }) {
   let sub;
   if (reward.type === "role") {
     icon = (
-      <img src={reward.role.image} alt="" className="h-44 w-36 rounded-2xl object-cover" style={{ boxShadow: `0 0 50px ${r.glow}`, outline: `2px solid ${r.color}` }} />
+      <img src={reward.role.image} alt="" className="aspect-[2/3] w-44 rounded-2xl object-cover" style={{ boxShadow: `0 0 50px ${r.glow}`, outline: `2px solid ${r.color}` }} />
     );
     title = reward.role.name;
     sub = reward.duplicate ? `Роль уже есть — компенсация +${reward.amount} Токенов` : "Новая роль открыта!";

@@ -105,11 +105,11 @@ const RolesGallery = () => {
             <div className="absolute bottom-1.5 right-1.5 h-3 w-3 border-r-2 border-b-2 border-[#d4af37]/60 group-hover:border-[#d4af37]"></div>
 
             <div>
-              <div className="relative h-60 w-full overflow-hidden rounded-lg border border-[#c5a059]/30 bg-black">
+              <div className="relative aspect-[2/3] w-full overflow-hidden rounded-lg border border-[#c5a059]/30 bg-black">
                 <img
                   src={role.image}
                   alt={role.name}
-                  className={`h-full w-full object-cover object-top transition-transform duration-500 group-hover:scale-105 ${
+                  className={`h-full w-full object-cover transition-transform duration-500 group-hover:scale-105 ${
                     ownsRole(role.id) ? '' : 'opacity-40 grayscale'
                   }`}
                 />
