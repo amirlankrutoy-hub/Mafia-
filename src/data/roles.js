@@ -104,7 +104,7 @@ const roles = [
     name: 'Священник',
     category: 'civilians',
     team: 'Мирные жители',
-    image: '/Sveshennik.jpg',
+    image: '/roles/sveshennik.webp',
     description: 'Может либо проверить игрока, либо устранить его.',
     ability: 'Проверяет или устраняет игроков.'
   }
