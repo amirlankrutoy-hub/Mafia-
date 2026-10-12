@@ -29,8 +29,8 @@ export const ROLE_RARITY = {
 // Базовые роли есть у всех бесплатно: в коллекции показываются, но из сундуков не выпадают
 export const BASE_ROLES = ["obivatel", "mafia"];
 
-// Если роль уже есть — компенсация Токенами (не больше 70% цены сундука, см. services/chests.js)
-export const DUPLICATE_TOKENS = { common: 100, rare: 200, epic: 500, mythic: 1200 };
+// Роли не повторяются: если все роли выпавшей редкости уже открыты — вместо роли 500 Токенов
+export const ROLE_REPLACEMENT_TOKENS = 500;
 
 // Любая награда Токенами меньше цены сундука — сундук нельзя "окупить" одними Токенами
 export const MAX_TOKEN_SHARE = 0.7;

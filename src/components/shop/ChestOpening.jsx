@@ -15,12 +15,16 @@ function RewardCard({ reward }) {
   let icon;
   let title;
   let sub;
-  if (reward.type === "role") {
+  if (reward.type === "role" && reward.allOwned) {
+    icon = <img src="/tokens.png" alt="" className="h-28 w-28" />;
+    title = `+${reward.amount} Токенов`;
+    sub = `Все роли редкости «${r.label}» у вас уже есть — вместо роли Токены`;
+  } else if (reward.type === "role") {
     icon = (
       <img src={reward.role.image} alt="" className="aspect-[2/3] w-44 rounded-2xl object-cover" style={{ boxShadow: `0 0 50px ${r.glow}`, outline: `2px solid ${r.color}` }} />
     );
     title = reward.role.name;
-    sub = reward.duplicate ? `Роль уже есть — компенсация +${reward.amount} Токенов` : "Новая роль открыта!";
+    sub = "Новая роль открыта!";
   } else if (reward.type === "emoji") {
     icon = <span className="text-8xl">{reward.emoji.symbol}</span>;
     title = "Новый эмодзи";
