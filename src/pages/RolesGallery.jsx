@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import roles from '../data/roles';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faArrowRight } from '@fortawesome/free-solid-svg-icons';
-import { ROLE_PRICES } from '../data/shopData';
+import { RARITIES, ROLE_RARITY } from '../data/chests';
 import { ownsRole } from '../services/wallet';
 import { isRoleDisabled } from '../services/admin';
 import useSeo from '../hooks/useSeo';
@@ -117,7 +117,7 @@ const RolesGallery = () => {
                   <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/30">
                     <span className="text-5xl drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]">🔒</span>
                     <span className="rounded-md bg-black/70 border border-[#d4af37]/60 px-2 py-0.5 text-xs font-bold text-[#d4af37]">
-                      {ROLE_PRICES[role.id] ?? 0} M
+                      {RARITIES[ROLE_RARITY[role.id]]?.label || "Редкая"} · из сундуков
                     </span>
                   </div>
                 )}

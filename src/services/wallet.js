@@ -11,7 +11,7 @@
 import { PROMO_CODES, ROLE_PRICES, EMOJIS, DECORATIONS } from "../data/shopData";
 
 const STORAGE_KEY = "mafia_wallet_v1";
-const FREE_ROLES = ["obivatel"]; // Обыватель — базовая роль, всегда доступна
+const FREE_ROLES = ["obivatel", "mafia"]; // базовые роли — есть у всех бесплатно
 
 // Ключ аккаунта хранится в accounts.js под этим же именем — берём его
 // напрямую по ключу (а не через import), чтобы не создавать циклическую
@@ -158,6 +158,16 @@ export function purchase({ kind, id, price }) {
   state[listKey] = [...state[listKey], id];
   writeState(state);
   return { success: true };
+}
+
+/** Выдать предмет бесплатно (награда из сундука). Возвращает false, если уже есть. */
+export function grantItem(kind, id) {
+  const state = readState();
+  const listKey = kind === "role" ? "ownedRoles" : kind === "emoji" ? "ownedEmojis" : "ownedDecorations";
+  if (state[listKey].includes(id)) return false;
+  state[listKey] = [...state[listKey], id];
+  writeState(state);
+  return true;
 }
 
 export function setEquippedDecoration(decorationId) {

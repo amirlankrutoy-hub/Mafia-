@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import roles from "../data/roles";
-import { ROLE_PRICES } from "../data/shopData";
+import { RARITIES, ROLE_RARITY } from "../data/chests";
 import { ownsRole } from "../services/wallet";
 import { isRoleDisabled } from "../services/admin";
 import { useLanguage } from "../context/LanguageContext";
@@ -112,7 +112,7 @@ export default function PartySetup({ players, onStart, onClose }) {
                           </div>
                         ) : (
                           <div className="mt-2 text-[11px] font-bold text-[#f3d27a]">
-                            🔒 {ROLE_PRICES[role.id] ?? 0} Токенов — в магазине
+                            🔒 {RARITIES[ROLE_RARITY[role.id]]?.label} — выпадает из сундуков
                           </div>
                         )}
                       </div>

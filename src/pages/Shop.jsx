@@ -1,16 +1,14 @@
 import { useEffect, useState } from "react";
 import roles from "../data/roles";
-import {
-  ROLE_PRICES,
-  EMOJIS,
-  DECORATIONS,
-  ADMIN_DECORATION,
-  isNewRole
-} from "../data/shopData";
+import { EMOJIS, DECORATIONS, ADMIN_DECORATION } from "../data/shopData";
+import { CHESTS, RARITIES, RARITY_ORDER, ROLE_RARITY, roleChance } from "../data/chests";
+import { openChest } from "../services/chests";
+import ChestSVG from "../components/shop/ChestSVG";
+import ChestOpening from "../components/shop/ChestOpening";
+import { toast } from "../services/toast";
 import {
   getWallet,
   purchase,
-  ownsRole,
   ownsEmoji,
   ownsDecoration,
   setEquippedDecoration,
@@ -23,7 +21,7 @@ import { getTeniBalance } from "../services/teniWallet";
 import useSeo from '../hooks/useSeo';
 
 const TABS = [
-  { id: "roles", label: "Роли" },
+  { id: "chests", label: "Сундуки" },
   { id: "emojis", label: "Эмодзи" },
   { id: "decor", label: "Украшения" },
   { id: "abilities", label: "Способности" },
@@ -31,8 +29,8 @@ const TABS = [
 ];
 
 export default function Shop() {
-  useSeo({ title: 'Магазин', description: 'Роли, эмодзи, украшения и способности для игры Mafia Play.', path: '/shop' });
-  const [tab, setTab] = useState("roles");
+  useSeo({ title: 'Магазин', description: 'Сундуки с ролями, эмодзи, украшения и способности для игры Mafia Play.', path: '/shop' });
+  const [tab, setTab] = useState("chests");
   const [wallet, setWallet] = useState(getWallet());
   const [promoInput, setPromoInput] = useState("");
   const [promoMsg, setPromoMsg] = useState(null);
@@ -119,61 +117,7 @@ export default function Shop() {
         ))}
       </div>
 
-      {tab === "roles" && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-5">
-          {roles.map((role) => {
-            const price = ROLE_PRICES[role.id] ?? 0;
-            // Берём статус из state кошелька, чтобы UI обновлялся сразу после покупки
-            const owned =
-              wallet.ownedRoles?.includes(role.id) || ownsRole(role.id);
-            return (
-              <div
-                key={role.id}
-                className="relative rounded-xl border border-[#c5a059]/40 bg-[#120a07] overflow-hidden"
-              >
-                {isNewRole(role.id) && (
-                  <span className="absolute top-2 right-2 z-10 rounded-full bg-gradient-to-r from-[#8b0000] to-[#d4af37] px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-white shadow-[0_2px_8px_rgba(0,0,0,0.8)] animate-pulse">
-                    New
-                  </span>
-                )}
-                {/* Замок только на картинке — не перекрывает кнопку покупки */}
-                <div className="relative h-40 w-full">
-                  <img
-                    src={role.image}
-                    alt={role.name}
-                    className={`h-full w-full object-cover ${
-                      owned ? "" : "opacity-40 grayscale"
-                    }`}
-                  />
-                  {!owned && (
-                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                      <span className="text-5xl drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]">
-                        🔒
-                      </span>
-                    </div>
-                  )}
-                </div>
-                <div className="p-3 text-center space-y-2">
-                  <p className="font-bold text-[#f3e5ab]">{role.name}</p>
-                  {owned ? (
-                    <span className="text-xs text-emerald-400 uppercase tracking-wider">
-                      Куплено
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => buy("role", role.id, price)}
-                      className="w-full rounded-lg bg-[#d4af37] text-black font-bold py-1.5 text-sm hover:brightness-110"
-                    >
-                      {price}{" "}<img src="/tokens.png" alt="" className="inline h-4 w-4 object-contain align-[-2px]" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      {tab === "chests" && <ChestsTab wallet={wallet} />}
 
       {tab === "emojis" && (
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-4">
@@ -330,6 +274,138 @@ export default function Shop() {
             </p>
           )}
         </form>
+      )}
+    </div>
+  );
+}
+
+const DROP_LABELS = { tokens: "Токены", teni: "Тени", emoji: "Эмодзи", role: "Роль" };
+
+function ChestCard({ chest, i, balance, onOpen }) {
+  const [showOdds, setShowOdds] = useState(false);
+  const r = RARITIES[chest.rarity];
+  const canBuy = balance >= chest.price;
+  return (
+    <div
+      className="noir-card spotlight relative flex flex-col items-center overflow-hidden p-5 text-center anim-fade-up"
+      style={{ "--i": i, boxShadow: `0 20px 50px -25px ${chest.colors.glow}` }}
+    >
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-40" style={{ background: `radial-gradient(ellipse at 50% 0%, ${chest.colors.glow}, transparent 70%)` }} />
+      <span className="chip relative" style={{ color: r.color, borderColor: r.color }}>{r.label}</span>
+      <div className="relative mt-3 anim-float" style={{ animationDelay: `${i * 0.7}s` }}>
+        <ChestSVG colors={chest.colors} className="h-36 w-44 drop-shadow-[0_15px_25px_rgba(0,0,0,0.8)] transition-transform duration-500 hover:scale-110 hover:-rotate-3" />
+      </div>
+      <h3 className="relative mt-2 font-display text-2xl font-black" style={{ color: r.color }}>{chest.name}</h3>
+
+      <div className="relative mt-3 grid w-full grid-cols-4 gap-1.5 text-[10px]">
+        {RARITY_ORDER.map((rar) => (
+          <div key={rar} className="rounded-lg bg-black/40 px-1 py-1.5">
+            <div className="font-black" style={{ color: RARITIES[rar].color }}>
+              {roleChance(chest, rar).toFixed(rar === "mythic" || rar === "epic" ? 1 : 0)}%
+            </div>
+            <div className="text-[#a8916c]">{RARITIES[rar].label.slice(0, 4)}.</div>
+          </div>
+        ))}
+      </div>
+      <p className="relative mt-1 text-[10px] text-[#a8916c]">шанс выбить роль каждой редкости</p>
+
+      <button type="button" onClick={() => setShowOdds((v) => !v)} className="relative mt-2 text-xs text-[#f3d27a] underline-offset-4 hover:underline">
+        {showOdds ? "Скрыть шансы" : "Все шансы"}
+      </button>
+      {showOdds && (
+        <div className="relative mt-2 w-full space-y-1 rounded-xl bg-black/40 p-3 text-left text-xs anim-fade-in">
+          {Object.entries(chest.drops).map(([k, v]) => (
+            <div key={k} className="flex justify-between">
+              <span className="text-[#c9b48f]">
+                {DROP_LABELS[k]}
+                {k === "tokens" && ` (${chest.tokens[0]}–${chest.tokens[1]})`}
+                {k === "teni" && ` (${chest.teni[0]}–${chest.teni[1]})`}
+              </span>
+              <b className="text-[#f3e5ab]">{v}%</b>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <button type="button" disabled={!canBuy} onClick={() => onOpen(chest)} className={`btn mt-4 w-full ${canBuy ? "btn-blood" : "btn-ghost"}`}>
+        {canBuy ? "Открыть" : "Не хватает"} · {chest.price.toLocaleString("ru-RU")}
+        <img src="/tokens.png" alt="" className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
+function ChestsTab({ wallet }) {
+  const [opening, setOpening] = useState(null); // { chest, reward }
+
+  const open = (chest) => {
+    const res = openChest(chest.id);
+    if (!res.success) {
+      toast({ kind: "error", text: res.message });
+      return;
+    }
+    setOpening({ chest, reward: res.reward });
+  };
+
+  const collection = roles
+    .filter((r) => ROLE_RARITY[r.id])
+    .sort((a, b) => RARITY_ORDER.indexOf(ROLE_RARITY[a.id]) - RARITY_ORDER.indexOf(ROLE_RARITY[b.id]));
+  const ownedCount = collection.filter((r) => wallet.ownedRoles?.includes(r.id)).length;
+
+  return (
+    <div className="space-y-10">
+      <p className="mx-auto max-w-2xl text-center text-sm text-[#c9b48f]">
+        Роли больше не продаются — они выпадают из сундуков вместе с Токенами, Тенями и эмодзи. Чем дороже сундук,
+        тем выше шанс на редкие роли.
+      </p>
+      <div className="grid gap-5 md:grid-cols-3">
+        {CHESTS.map((c, i) => (
+          <ChestCard key={c.id} chest={c} i={i} balance={wallet.balance} onOpen={open} />
+        ))}
+      </div>
+
+      <section>
+        <div className="flex items-end justify-between">
+          <h2 className="font-display text-2xl font-black text-[#f3e5ab]">Коллекция ролей</h2>
+          <span className="text-sm text-[#a8916c]">
+            Открыто <b className="text-[#f3d27a]">{ownedCount}</b> из {collection.length}
+          </span>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {collection.map((role, i) => {
+            const rar = RARITIES[ROLE_RARITY[role.id]];
+            const owned = wallet.ownedRoles?.includes(role.id);
+            return (
+              <div
+                key={role.id}
+                className="relative overflow-hidden rounded-2xl anim-scale-in"
+                style={{ "--i": i, outline: `2px solid ${owned ? rar.color : "rgba(255,255,255,0.08)"}`, boxShadow: owned ? `0 0 25px -5px ${rar.glow}` : "none" }}
+              >
+                <img src={role.image} alt={role.name} className={`h-44 w-full object-cover ${owned ? "" : "grayscale opacity-35"}`} />
+                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-transparent" />
+                {!owned && <span className="absolute left-1/2 top-1/3 -translate-x-1/2 text-3xl">🔒</span>}
+                <div className="absolute inset-x-0 bottom-0 p-2.5">
+                  <div className="text-[10px] font-black uppercase tracking-wider" style={{ color: rar.color }}>{rar.label}</div>
+                  <div className="font-display text-base font-bold text-[#f3e5ab]">{role.name}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {opening && (
+        <ChestOpening
+          chest={opening.chest}
+          reward={opening.reward}
+          canAgain={getWallet().balance >= opening.chest.price}
+          onClose={() => setOpening(null)}
+          onAgain={() => {
+            const res = openChest(opening.chest.id);
+            if (res.success) setOpening({ chest: opening.chest, reward: res.reward });
+            else setOpening(null);
+          }}
+        />
       )}
     </div>
   );
