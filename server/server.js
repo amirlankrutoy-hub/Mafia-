@@ -425,9 +425,9 @@ function emitPhase(room, data) {
     io.to(room.code).emit("game-phase", data);
 }
 
-// Способности доступны всю фазу (голосование днём / ночь). Каждый игрок
-// бесплатно использует одну способность за игру; купленные в магазине
-// заряды дают дополнительные использования (не больше одной за фазу).
+// Способности доступны всю фазу (голосование днём / ночь). Каждый игрок может
+// использовать только ОДНУ способность за игру — дневную или ночную — и только
+// из своего набора (купленные в магазине; заряд списывается на устройстве игрока).
 function openAbilityWindow(room, phase) {
     room.abilityWindow = { phase, id: `${room.gameId}:${phase}:${phase === "day" ? room.day : room.night}:${room.voteRound || 0}` };
     const prev = room.abilityEffects || {};
@@ -448,7 +448,7 @@ function abilityKey(p) {
 
 function abilityUsage(room) {
     if (!room.abilityUsage || room.abilityUsage.gameId !== room.gameId) {
-        room.abilityUsage = { gameId: room.gameId, free: {}, perWindow: {} };
+        room.abilityUsage = { gameId: room.gameId, free: {} }; // free: игрок -> использованная способность
     }
     return room.abilityUsage;
 }
@@ -466,8 +466,7 @@ function abilityState(room, socketId) {
         enabled,
         alive: self.alive !== false,
         phase: activePhase,
-        freeUsed: !!usage.free[key],
-        usedThisPhase: !!(win && usage.perWindow[`${win.id}|${key}`])
+        usedInGame: usage.free[key] || null
     };
 }
 
@@ -1080,7 +1079,7 @@ io.on("connection", (socket) => {
     });
 
     // ==========================
-    // Способности: одна бесплатная за игру + купленные заряды
+    // Способности: одна за игру, только из своего набора
     // ==========================
     on(socket, "ability:state", ({ roomCode } = {}, cb) => {
         const done = ack(cb);
@@ -1088,7 +1087,7 @@ io.on("connection", (socket) => {
         done(room ? abilityState(room, socket.id) : { enabled: false });
     });
 
-    on(socket, "ability:activate", ({ roomCode, abilityId, targetId, paid } = {}, cb) => {
+    on(socket, "ability:activate", ({ roomCode, abilityId, targetId } = {}, cb) => {
         const done = ack(cb);
         const room = RoomManager.getRoom(roomCode);
         if (!room) return done({ success: false, message: "Комната не найдена" });
@@ -1104,8 +1103,7 @@ io.on("connection", (socket) => {
         }
         const self = room.players.find((p) => p.id === socket.id && p.alive !== false);
         if (!self) return done({ success: false, message: "Недоступно" });
-        if (state.usedThisPhase) return done({ success: false, message: "В этой фазе вы уже использовали способность" });
-        if (state.freeUsed && !paid) return done({ success: false, message: "Вы уже использовали способность в этой игре" });
+        if (state.usedInGame) return done({ success: false, message: "Способность можно использовать только один раз за игру" });
         if (def.needsTarget && (!targetId || targetId === socket.id)) return done({ success: false, message: "Выберите другого игрока" });
         const target = def.needsTarget ? room.players.find((p) => p.id === targetId && p.alive !== false) : null;
         if (def.needsTarget && !target) return done({ success: false, message: "Цель не найдена" });
@@ -1151,10 +1149,8 @@ io.on("connection", (socket) => {
         }
         const usage = abilityUsage(room);
         const key = abilityKey(self);
-        const free = !usage.free[key];
-        if (free) usage.free[key] = abilityId;
-        usage.perWindow[`${room.abilityWindow.id}|${key}`] = abilityId;
-        done({ success: true, info, free });
+        usage.free[key] = abilityId;
+        done({ success: true, info });
     });
 
     // ==========================

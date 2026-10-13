@@ -213,8 +213,8 @@ export default function Shop() {
             </span>
           </p>
           <p className="mx-auto mb-6 max-w-2xl rounded-xl border border-[#d4af37]/25 bg-black/30 px-4 py-3 text-center text-sm text-[#e6d5bc]">
-            Если мэр разрешил способности, в каждой игре <b className="text-[#f3d27a]">одна способность — бесплатно</b>. Купленные заряды
-            дают дополнительные использования (не больше одной способности за голосование или ночь).
+            Купленные способности появляются у вас в игре, если мэр их разрешил. За одну игру можно использовать
+            <b className="text-[#f3d27a]"> только одну способность</b> — дневную на голосовании или ночную ночью. Использованный заряд списывается.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
             {ABILITIES.map((a) => (

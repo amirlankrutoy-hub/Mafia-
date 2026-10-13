@@ -8,9 +8,10 @@ import { toast } from "../services/toast";
 import Avatar from "./ui/Avatar";
 
 /**
- * Способности в игре. Если мэр их разрешил, у каждого живого игрока на
- * голосовании и ночью есть кнопка «Способность» — пока он не использует
- * свою бесплатную способность. Купленные в магазине заряды дают ещё использования.
+ * Способности в игре. Если мэр их разрешил, живой игрок видит кнопку
+ * «Способность» с теми способностями из своего набора (купленными в магазине),
+ * которые подходят к фазе: дневные — на голосовании, ночные — ночью.
+ * За игру можно использовать только одну способность; заряд списывается.
  */
 export default function AbilityBar({ phase, roomCode, players = [] }) {
   const [state, setState] = useState(null);
@@ -47,25 +48,23 @@ export default function AbilityBar({ phase, roomCode, players = [] }) {
     setPendingTarget(null);
   }, [phase]);
 
-  if (!state?.enabled || !state.alive || state.phase !== phase || state.usedThisPhase) return null;
+  if (!state?.enabled || !state.alive || state.phase !== phase || state.usedInGame) return null;
 
-  const list = ABILITIES.filter((a) => a.type === phase);
-  const freeLeft = !state.freeUsed;
-  const available = list.filter((a) => freeLeft || (owned[a.id] || 0) > 0);
-  if (!available.length) return null;
+  // только способности из своего набора
+  const list = ABILITIES.filter((a) => a.type === phase && (owned[a.id] || 0) > 0);
+  if (!list.length) return null;
 
   const activate = (ability, targetId) => {
     if (busy) return;
     setBusy(true);
-    const paid = !freeLeft;
-    socket.emit("ability:activate", { roomCode, abilityId: ability.id, targetId, paid }, (res) => {
+    socket.emit("ability:activate", { roomCode, abilityId: ability.id, targetId }, (res) => {
       setBusy(false);
       if (!res?.success) {
         toast({ kind: "error", text: res?.message || "Не удалось использовать способность" });
         refresh();
         return;
       }
-      if (!res.free) consumeAbility(ability.id);
+      consumeAbility(ability.id);
       toast({
         kind: "success",
         title: `${ability.name}: активировано`,
@@ -89,7 +88,7 @@ export default function AbilityBar({ phase, roomCode, players = [] }) {
           </span>
           <span className="flex flex-col items-start leading-tight">
             <span className="text-sm font-black">Способность</span>
-            <span className="text-[10px] font-bold opacity-75">{freeLeft ? "1 бесплатная за игру" : "из запаса"}</span>
+            <span className="text-[10px] font-bold opacity-75">1 раз за игру</span>
           </span>
         </button>
       )}
@@ -114,9 +113,7 @@ export default function AbilityBar({ phase, roomCode, players = [] }) {
                 <p className="text-[11px] text-[#a8916c]">
                   {pendingTarget
                     ? "Выберите игрока"
-                    : freeLeft
-                      ? "Можно использовать одну способность бесплатно — выбирайте с умом"
-                      : "Бесплатная уже использована — тратятся купленные заряды"}
+                    : "За игру можно использовать только одну способность — выбирайте с умом"}
                 </p>
               </div>
               <button type="button" onClick={() => setOpen(false)} className="text-[#a8916c] hover:text-[#f3e5ab]" aria-label="Закрыть">
@@ -142,12 +139,11 @@ export default function AbilityBar({ phase, roomCode, players = [] }) {
             ) : (
               <div className="mt-4 space-y-2">
                 {list.map((a) => {
-                  const can = freeLeft || (owned[a.id] || 0) > 0;
                   return (
                     <button
                       key={a.id}
                       type="button"
-                      disabled={!can || busy}
+                      disabled={busy}
                       onClick={() => (a.needsTarget ? setPendingTarget(a) : activate(a))}
                       className="ability-option"
                     >
@@ -158,7 +154,7 @@ export default function AbilityBar({ phase, roomCode, players = [] }) {
                         <span className="block text-sm font-black text-[#f3e5ab]">{a.name}</span>
                         <span className="block text-[11px] leading-snug text-[#a8916c]">{a.description}</span>
                       </span>
-                      {!freeLeft && <span className="chip !text-[9px]">×{owned[a.id] || 0}</span>}
+                      <span className="chip !text-[9px]">×{owned[a.id] || 0}</span>
                     </button>
                   );
                 })}
