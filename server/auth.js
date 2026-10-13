@@ -6,6 +6,17 @@
 const crypto = require("crypto");
 
 const GOOGLE_CLIENT_ID = String(process.env.GOOGLE_CLIENT_ID || "").trim();
+// Пока нет своего ключа Google Cloud — вход через Google идёт через Clerk
+const CLERK_PUBLISHABLE_KEY = String(process.env.CLERK_PUBLISHABLE_KEY || "").trim();
+const CLERK_SECRET_KEY = String(process.env.CLERK_SECRET_KEY || "").trim();
+const CLERK_FRONTEND = (() => {
+    try {
+        const b64 = CLERK_PUBLISHABLE_KEY.replace(/^pk_(test|live)_/, "");
+        return Buffer.from(b64, "base64").toString("utf8").replace(/\$$/, "");
+    } catch {
+        return "";
+    }
+})();
 const SESSION_TTL_MS = 365 * 24 * 60 * 60 * 1000;
 const MAX_SESSIONS_PER_ACCOUNT = 15;
 const MAX_SAVE_BYTES = 80 * 1024;
@@ -43,6 +54,59 @@ async function verifyGoogleToken(credential) {
     }
 }
 
+let clerkJwks = { at: 0, keys: [] };
+async function clerkKeys(force = false) {
+    if (!force && Date.now() - clerkJwks.at < 6 * 60 * 60 * 1000 && clerkJwks.keys.length) return clerkJwks.keys;
+    const res = await fetch(`https://${CLERK_FRONTEND}/.well-known/jwks.json`);
+    if (!res.ok) throw new Error(`JWKS ${res.status}`);
+    clerkJwks = { at: Date.now(), keys: (await res.json()).keys || [] };
+    return clerkJwks.keys;
+}
+
+/** Проверка токена сессии Clerk + данные пользователя (почта Google) */
+async function verifyClerkToken(token) {
+    if (!CLERK_SECRET_KEY || !CLERK_FRONTEND) return { ok: false, message: "Вход через Google ещё не настроен" };
+    if (typeof token !== "string" || token.length > 5000) return { ok: false, message: "Неверный ответ входа" };
+    try {
+        const [h, p, sig] = token.split(".");
+        const header = JSON.parse(Buffer.from(h, "base64url").toString("utf8"));
+        const claims = JSON.parse(Buffer.from(p, "base64url").toString("utf8"));
+        let jwk = (await clerkKeys()).find((k) => k.kid === header.kid);
+        if (!jwk) jwk = (await clerkKeys(true)).find((k) => k.kid === header.kid);
+        if (!jwk || header.alg !== "RS256") return { ok: false, message: "Вход не подтверждён" };
+        const key = crypto.createPublicKey({ key: jwk, format: "jwk" });
+        const valid = crypto.verify("RSA-SHA256", Buffer.from(`${h}.${p}`), key, Buffer.from(sig, "base64url"));
+        const now = Date.now() / 1000;
+        if (!valid || claims.iss !== `https://${CLERK_FRONTEND}` || !claims.sub) return { ok: false, message: "Вход не подтверждён" };
+        if (claims.exp && claims.exp + 60 < now) return { ok: false, message: "Срок входа истёк, попробуйте ещё раз" };
+        if (claims.nbf && claims.nbf - 60 > now) return { ok: false, message: "Вход не подтверждён" };
+
+        const res = await fetch(`https://api.clerk.com/v1/users/${encodeURIComponent(claims.sub)}`, {
+            headers: { Authorization: `Bearer ${CLERK_SECRET_KEY}` }
+        });
+        if (!res.ok) return { ok: false, message: "Не удалось получить данные аккаунта" };
+        const user = await res.json();
+        const google = (user.external_accounts || []).find((a) => /google/.test(a.provider || ""));
+        const primary = (user.email_addresses || []).find((e) => e.id === user.primary_email_address_id) || (user.email_addresses || [])[0];
+        const email = normEmail(google?.email_address || primary?.email_address);
+        return {
+            ok: true,
+            sub: `clerk:${user.id}`,
+            email,
+            googleVerified: !!google,
+            name: user.first_name || google?.first_name || user.username || (email ? email.split("@")[0] : "")
+        };
+    } catch (err) {
+        console.error("⚠️ Проверка Clerk:", err.message);
+        return { ok: false, message: "Не удалось проверить вход" };
+    }
+}
+
+/** Google напрямую (credential) или через Clerk (clerkToken) */
+function verifyGoogleAny({ credential, clerkToken } = {}) {
+    return clerkToken ? verifyClerkToken(clerkToken) : verifyGoogleToken(credential);
+}
+
 function createAuth({ db, store, on, ack, ensureProfile, profileOf, validateName, isAccountId, cleanName }) {
     db.authEmails = db.authEmails || {}; // email -> { id, salt, hash }
     db.authGoogle = db.authGoogle || {}; // google sub -> id
@@ -54,6 +118,13 @@ function createAuth({ db, store, on, ack, ensureProfile, profileOf, validateName
         const l = links(id);
         return !!(l && (l.email || l.google));
     };
+
+    // Один и тот же Google через Clerk и напрямую — один аккаунт (по почте Google)
+    function byGoogleEmail(email) {
+        if (!email) return null;
+        for (const [id, l] of Object.entries(db.authLinks)) if (l.google && l.googleEmail === email) return id;
+        return null;
+    }
 
     function newAccountId() {
         let id;
@@ -159,7 +230,9 @@ function createAuth({ db, store, on, ack, ensureProfile, profileOf, validateName
                     });
                 }
             });
-        handle("auth:config", (cb) => ack(cb)({ googleClientId: GOOGLE_CLIENT_ID || null }));
+        handle("auth:config", (cb) =>
+            ack(cb)({ googleClientId: GOOGLE_CLIENT_ID || null, clerkPublishableKey: CLERK_SECRET_KEY ? CLERK_PUBLISHABLE_KEY || null : null })
+        );
 
         // Регистрация по почте. claimId — текущий гостевой аккаунт: его прогресс сохраняется.
         handle("auth:email-register", async ({ email, password, name, claimId } = {}, cb) => {
@@ -193,14 +266,17 @@ function createAuth({ db, store, on, ack, ensureProfile, profileOf, validateName
             await finishLogin(socket, rec.id, "email", done);
         });
 
-        handle("auth:google", async ({ credential, claimId } = {}, cb) => {
+        handle("auth:google", async ({ credential, clerkToken, claimId } = {}, cb) => {
             const done = ack(cb);
             if (!attempt(socket)) return done({ success: false, message: "Слишком много попыток. Подождите минуту." });
-            const g = await verifyGoogleToken(credential);
+            const g = await verifyGoogleAny({ credential, clerkToken });
             if (!g.ok) return done({ success: false, message: g.message });
 
-            const existing = db.authGoogle[g.sub];
-            if (existing) return finishLogin(socket, existing, "google", done);
+            const existing = db.authGoogle[g.sub] || byGoogleEmail(g.email);
+            if (existing) {
+                db.authGoogle[g.sub] = existing;
+                return finishLogin(socket, existing, "google", done);
+            }
 
             const reuse = claimable(claimId) ? String(claimId) : null;
             const id = reuse || newAccountId();
@@ -211,13 +287,14 @@ function createAuth({ db, store, on, ack, ensureProfile, profileOf, validateName
         });
 
         // Привязать Google/почту к уже вошедшему аккаунту (из настроек)
-        handle("auth:link-google", async ({ credential, token } = {}, cb) => {
+        handle("auth:link-google", async ({ credential, clerkToken, token } = {}, cb) => {
             const done = ack(cb);
             const id = sessionAccount(token) || (claimable(socket.data.accountId) ? socket.data.accountId : null);
             if (!id) return done({ success: false, message: "Сначала войдите в аккаунт" });
-            const g = await verifyGoogleToken(credential);
+            const g = await verifyGoogleAny({ credential, clerkToken });
             if (!g.ok) return done({ success: false, message: g.message });
-            if (db.authGoogle[g.sub] && db.authGoogle[g.sub] !== id) {
+            const other = db.authGoogle[g.sub] || byGoogleEmail(g.email);
+            if (other && other !== id) {
                 return done({ success: false, message: "Этот Google уже привязан к другому аккаунту" });
             }
             db.authGoogle[g.sub] = id;

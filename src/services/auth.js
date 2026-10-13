@@ -144,7 +144,8 @@ async function finishLogin(res, { keepLocal = false } = {}) {
   if (res.save && Object.keys(res.save).length > 1) {
     applySave(res.save);
     lastPushed = JSON.stringify(collectSave());
-    window.location.reload();
+    if (window.location.pathname.startsWith("/auth/")) window.location.replace("/");
+    else window.location.reload();
     return { ...res, reloading: true };
   }
   if (!sameAccount && !keepLocal) clearProgress();
@@ -161,9 +162,15 @@ const myId = () => {
   }
 };
 
+let configPromise = null;
 export async function getAuthConfig() {
-  const res = await request("auth:config");
-  return res?.googleClientId ? res : { googleClientId: null };
+  if (!configPromise) {
+    configPromise = request("auth:config").then((res) => {
+      if (res?.success === false) configPromise = null; // сервер не ответил — спросим ещё раз позже
+      return { googleClientId: res?.googleClientId || null, clerkPublishableKey: res?.clerkPublishableKey || null };
+    });
+  }
+  return configPromise;
 }
 
 export async function loginWithEmail(email, password) {
@@ -179,8 +186,13 @@ export async function loginWithGoogle(credential) {
   return finishLogin(await request("auth:google", { credential, claimId: myId() }), { keepLocal: true });
 }
 
-export async function linkGoogle(credential) {
-  const res = await request("auth:link-google", { credential, token: getAuthToken() });
+/** Google через Clerk: clerkToken — токен сессии Clerk */
+export async function loginWithGoogleClerk(clerkToken) {
+  return finishLogin(await request("auth:google", { clerkToken, claimId: myId() }), { keepLocal: true });
+}
+
+export async function linkGoogle(credential, clerkToken) {
+  const res = await request("auth:link-google", { credential, clerkToken, token: getAuthToken() });
   if (res?.success) {
     setAuth({ ...(getAuth() || {}), token: res.token, links: res.links, method: getAuth()?.method || "google" });
     pushSave(true);

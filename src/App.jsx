@@ -32,6 +32,7 @@ import Terms from './pages/Terms';
 const AdminPanel = lazy(() => import('./pages/AdminPanel'));
 const Play = lazy(() => import('./pages/Play'));
 const Settings = lazy(() => import('./pages/Settings'));
+const AuthCallback = lazy(() => import('./pages/AuthCallback'));
 
 function AppRoutes({ account, showModal, handleAccountReady, loginReason }) {
   const userName = account?.name || '';
@@ -68,7 +69,7 @@ function AppRoutes({ account, showModal, handleAccountReady, loginReason }) {
     <div className="relative min-h-screen text-[#e6d5bc] font-sans selection:bg-[#d4af37] selection:text-black">
       <Ambient />
 
-      {showModal && <NameModal onAccountReady={handleAccountReady} reason={loginReason} />}
+      {showModal && !location.pathname.startsWith('/auth/') && <NameModal onAccountReady={handleAccountReady} reason={loginReason} />}
 
       <Navbar account={account} />
 
@@ -92,6 +93,7 @@ function AppRoutes({ account, showModal, handleAccountReady, loginReason }) {
                 <Route path="/profile" element={<ProfilePage account={account} />} />
                 <Route path="/achievements" element={<Achievements />} />
                 <Route path="/settings" element={<Settings account={account} />} />
+                <Route path="/auth/callback" element={<AuthCallback onAccountReady={handleAccountReady} />} />
                 <Route path="/admin" element={<AdminPanel />} />
                 <Route path="/privacy" element={<PrivacyPolicy />} />
                 <Route path="/terms" element={<Terms />} />

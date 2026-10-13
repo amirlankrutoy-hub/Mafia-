@@ -4,21 +4,43 @@ import { faEnvelope, faUser, faArrowLeft } from '@fortawesome/free-solid-svg-ico
 import { registerOrLoginByName } from '../services/accounts';
 import { checkNameAvailable } from '../services/presence';
 import { getAuthConfig, loadGoogleScript, loginWithEmail, loginWithGoogle, registerWithEmail } from '../services/auth';
+import { loadClerk, startGoogleViaClerk } from '../services/clerk';
 import Logo from './ui/Logo';
 
-/** Кнопка Google (официальная, от Google Identity Services) */
-export function GoogleButton({ onCredential, text = 'signin_with', onUnavailable }) {
+const GoogleG = () => (
+  <svg viewBox="0 0 48 48" className="h-5 w-5" aria-hidden="true">
+    <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.1 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z" />
+    <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.1 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z" />
+    <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z" />
+    <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z" />
+  </svg>
+);
+
+/**
+ * Кнопка «Войти через Google». Если на сервере есть свой ключ Google —
+ * официальная кнопка Google; иначе вход через Clerk (переход на страницу Google
+ * и возврат на /auth/callback).
+ */
+export function GoogleButton({ onCredential, text = 'signin_with', onUnavailable, mode = 'login' }) {
   const ref = useRef(null);
   const cbRef = useRef(onCredential);
   cbRef.current = onCredential;
   const [state, setState] = useState('loading');
+  const [clerkKey, setClerkKey] = useState(null);
+  const [going, setGoing] = useState(false);
 
   useEffect(() => {
     let alive = true;
     (async () => {
-      const { googleClientId } = await getAuthConfig();
+      const { googleClientId, clerkPublishableKey } = await getAuthConfig();
       if (!alive) return;
       if (!googleClientId) {
+        if (clerkPublishableKey) {
+          setClerkKey(clerkPublishableKey);
+          setState('clerk');
+          loadClerk(clerkPublishableKey).catch(() => {}); // прогреваем заранее
+          return;
+        }
         setState('off');
         onUnavailable?.();
         return;
@@ -51,6 +73,27 @@ export function GoogleButton({ onCredential, text = 'signin_with', onUnavailable
   }, [text]);
 
   if (state === 'off') return null;
+  if (state === 'clerk') {
+    return (
+      <button
+        type="button"
+        disabled={going}
+        onClick={async () => {
+          setGoing(true);
+          try {
+            await startGoogleViaClerk(clerkKey, mode);
+          } catch {
+            setGoing(false);
+            setState('error');
+          }
+        }}
+        className="google-btn"
+      >
+        <GoogleG />
+        {going ? 'Открываем Google…' : mode === 'link' ? 'Привязать Google' : 'Войти через Google'}
+      </button>
+    );
+  }
   return (
     <div className="flex min-h-[44px] w-full justify-center">
       <div ref={ref} className="flex w-full justify-center" />

@@ -177,7 +177,7 @@ function AccountSection({ account }) {
           <span className="flex-1 text-[#e6d5bc]">Google</span>
           {links.google ? <span className="text-xs text-emerald-300">{links.googleEmail || 'привязан'}</span> : null}
         </div>
-        {!links.google && <GoogleButton onCredential={onGoogle} text="continue_with" />}
+        {!links.google && <GoogleButton onCredential={onGoogle} text="continue_with" mode="link" />}
 
         <div className="flex items-center gap-3 pt-2 text-sm">
           <FontAwesomeIcon icon={faEnvelope} className="w-4 text-[#d4af37]" />
