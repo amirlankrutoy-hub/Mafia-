@@ -8,6 +8,9 @@ import { startVersionWatch } from './services/version';
 
 startVersionWatch();
 
+import { applySettings } from './services/settings';
+applySettings();
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <RoomProvider>
     <BrowserRouter>

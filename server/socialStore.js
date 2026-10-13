@@ -36,6 +36,10 @@ const EMPTY = () => ({
   supports: {}, // accountId -> { at, granted } — саппорты, назначенные админом
   reports: [], // сообщения саппортов администратору
   dms: {}, // "id1:id2" -> [{ from, text, at }] — личные сообщения друзей
+  authEmails: {}, // почта -> { id, salt, hash }
+  authGoogle: {}, // Google sub -> id
+  authSessions: {}, // токен входа -> { id, at, seen }
+  authLinks: {}, // id -> { email, google, googleEmail }
   stats: { gamesPlayed: 0, roomsCreated: 0, starsEarned: 0, topups: 0 }
 });
 
@@ -148,4 +152,29 @@ async function flushNow() {
 
 const persistent = () => useRedis || !!process.env.DATA_DIR;
 
-module.exports = { init, load, save, flushNow, persistent, DATA_DIR };
+// Отдельные записи (облачные сохранения игроков) — не раздувают общий документ
+const blobFile = (key) => path.join(DATA_DIR, "blobs", key.replace(/[^\w.-]/g, "_") + ".json");
+
+async function getBlob(key) {
+  if (useRedis) {
+    const raw = await redis(["GET", `mafia:${key}`]);
+    return raw ? JSON.parse(raw) : null;
+  }
+  try {
+    return JSON.parse(fs.readFileSync(blobFile(key), "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+async function setBlob(key, value) {
+  const json = JSON.stringify(value);
+  if (useRedis) {
+    await redis(["SET", `mafia:${key}`, json]);
+    return;
+  }
+  fs.mkdirSync(path.join(DATA_DIR, "blobs"), { recursive: true });
+  fs.writeFileSync(blobFile(key), json, "utf8");
+}
+
+module.exports = { init, load, save, flushNow, persistent, DATA_DIR, getBlob, setBlob };

@@ -4,6 +4,7 @@ import { socket } from "../socket";
 import { toast } from "../services/toast";
 import { credit } from "../services/wallet";
 import { applyTopup } from "../services/topup";
+import { forgetLocalAccount } from "../services/auth";
 import { setAccountStatus } from "../services/status";
 import { addUnread } from "../services/dm";
 import { isAdmin } from "../services/admin";
@@ -61,10 +62,19 @@ export default function GlobalEvents({ account }) {
       getDisabledRolesRemote().then(setDisabledRolesCache);
       if (acc) refreshRequestCount();
     };
+    // Аккаунт привязан к Google/почте, а входа на этом устройстве нет (или он истёк)
+    const onAuthRequired = () => {
+      forgetLocalAccount();
+      toast({ kind: "info", title: "Войдите в аккаунт", text: "Этот аккаунт защищён — войдите через Google или почту." });
+    };
+    socket.on("auth:required", onAuthRequired);
     socket.on("connect", hello);
     if (!socket.connected) socket.connect();
     else hello();
-    return () => socket.off("connect", hello);
+    return () => {
+      socket.off("connect", hello);
+      socket.off("auth:required", onAuthRequired);
+    };
   }, [account?.id]);
 
   useEffect(() => {

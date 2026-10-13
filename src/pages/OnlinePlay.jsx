@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCrown, faDoorOpen, faArrowRight } from "@fortawesome/free-solid-svg-icons";
+import { faCrown, faDoorOpen, faArrowRight, faArrowLeft } from "@fortawesome/free-solid-svg-icons";
 
 import Lobby from "../components/Lobby";
 import PartySetup from "../components/PartySetup";
@@ -355,6 +355,13 @@ export default function OnlinePlay({ account }) {
       {view === "menu" && (
         <div className="relative overflow-hidden rounded-[28px] ring-1 ring-[#d4af37]/20">
           <BackgroundVideo>
+            <button
+              type="button"
+              onClick={() => navigate("/")}
+              className="absolute left-3 top-3 z-10 flex items-center gap-2 rounded-full border border-[#d4af37]/40 bg-black/60 px-4 py-2 text-sm font-bold text-[#f3e5ab] backdrop-blur transition hover:border-[#f3d27a] lg:hidden"
+            >
+              <FontAwesomeIcon icon={faArrowLeft} /> Назад
+            </button>
             <div className="flex min-h-[calc(100vh-7rem)] flex-col items-center justify-center gap-8 px-5 py-14 text-center">
               <Logo size={190} intro float />
               <div>
@@ -423,6 +430,9 @@ export default function OnlinePlay({ account }) {
           />
           <button disabled={busy || !codeInput} className="btn btn-blood btn-lg mt-4 w-full">
             {busy ? "Входим…" : "Войти"}
+          </button>
+          <button type="button" onClick={() => setCodeOpen(false)} className="btn btn-ghost mt-2 w-full">
+            <FontAwesomeIcon icon={faArrowLeft} /> Назад
           </button>
         </form>
       </Modal>

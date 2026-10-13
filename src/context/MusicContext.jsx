@@ -6,11 +6,14 @@ import React, {
   useState,
   useCallback
 } from "react";
+import { getSettings, musicGain, onSettingsChanged } from "../services/settings";
 
 const MusicContext = createContext(null);
 
 const MENU_SRC = "/audio/sound.mp3";
 const LOBBY_SRC = "/audio/cowboy-theme.mp3";
+const MENU_BASE = 0.45;
+const LOBBY_BASE = 0.5;
 
 export function MusicProvider({ children }) {
   const menuRef = useRef(null);
@@ -36,15 +39,46 @@ export function MusicProvider({ children }) {
   useEffect(() => {
     const menu = new Audio(MENU_SRC);
     menu.loop = true;
-    menu.volume = 0.45;
     menuRef.current = menu;
 
     const lobby = new Audio(LOBBY_SRC);
     lobby.loop = true;
-    lobby.volume = 0.5;
     lobbyRef.current = lobby;
 
+    const applyVolume = () => {
+      const g = musicGain();
+      menu.volume = Math.min(1, MENU_BASE * g);
+      lobby.volume = Math.min(1, LOBBY_BASE * g);
+    };
+    applyVolume();
+    const offSettings = onSettingsChanged(applyVolume);
+
+    // Сайт свернули / открыли другую вкладку или приложение — музыка замолкает,
+    // вернулись — продолжает играть с того же места.
+    let resume = [];
+    const pauseAll = () => {
+      resume = [menu, lobby].filter((a) => !a.paused);
+      resume.forEach((a) => a.pause());
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        if (getSettings().pauseInBackground) pauseAll();
+      } else {
+        resume.forEach((a) => a.play().catch(() => {}));
+        resume = [];
+      }
+    };
+    const onPageHide = () => {
+      menu.pause();
+      lobby.pause();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", onPageHide);
+
     return () => {
+      offSettings();
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", onPageHide);
       menu.pause();
       lobby.pause();
       menuRef.current = null;
@@ -72,7 +106,7 @@ export function MusicProvider({ children }) {
     stopLobby();
     if (menuMuted) return;
     const a = menuRef.current;
-    if (!a) return;
+    if (!a || document.visibilityState === "hidden") return;
     try {
       a.currentTime = 0;
       await a.play();
@@ -86,7 +120,7 @@ export function MusicProvider({ children }) {
     stopMenu();
     if (lobbyMuted) return;
     const a = lobbyRef.current;
-    if (!a) return;
+    if (!a || document.visibilityState === "hidden") return;
     try {
       a.currentTime = 0;
       await a.play();

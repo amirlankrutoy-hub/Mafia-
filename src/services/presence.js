@@ -1,5 +1,6 @@
 // presence.js — онлайн-статус, друзья (заявки), приглашения, профиль, рейтинг.
 import { socket } from "../socket";
+import { getAuthToken } from "./auth";
 
 const ACK_TIMEOUT_MS = 8000;
 
@@ -39,7 +40,7 @@ const NO_ANSWER = { success: false, message: "Сервер не отвечает
 export function announcePresence(accountId, name) {
   if (!accountId) return;
   ensureConnected();
-  socket.emit("presence:hello", accountId, name);
+  socket.emit("presence:hello", accountId, name, getAuthToken());
 }
 
 export const onPresenceChanged = (cb) => subscribe("presence:changed", cb);

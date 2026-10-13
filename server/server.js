@@ -8,6 +8,7 @@ const RoomManager = require("./managers/RoomManager");
 const GameFlowManager = require("./managers/GameFlowManager");
 const NIGHT_ORDER = require("./managers/NightOrder");
 const store = require("./socialStore");
+const { createAuth } = require("./auth");
 const { createTelegram } = require("./telegram");
 
 // ==========================
@@ -777,7 +778,10 @@ const telegram = createTelegram({
 const mayorGraceTimers = {};
 const lobbyGraceTimers = {};
 
+const auth = createAuth({ db, store, on, ack, ensureProfile, profileOf, validateName, isAccountId, cleanName });
+
 io.on("connection", (socket) => {
+    auth.register(socket);
     socket.data.ip = clientIp(socket);
 
     const me = () => socket.data.accountId || null;
@@ -794,9 +798,14 @@ io.on("connection", (socket) => {
     // ==========================
     // Присутствие
     // ==========================
-    on(socket, "presence:hello", (accountId, name) => {
+    on(socket, "presence:hello", (accountId, name, token) => {
         accountId = String(accountId || "");
         if (!isAccountId(accountId)) return;
+        // Аккаунт, привязанный к Google/почте, — только с действующим входом
+        if (!auth.canUseAccount(accountId, token)) {
+            socket.emit("auth:required", { accountId });
+            return;
+        }
 
         const ban = activeBan(accountId);
         if (ban) {

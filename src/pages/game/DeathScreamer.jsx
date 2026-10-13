@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { soundGain } from "../../services/settings";
 
 // Экран смерти игрока.
 //  - Убит ночью (или устранён мэром): коридор, дверь с табличкой "YOUR ROOM",
@@ -36,7 +37,7 @@ function useAudio() {
     f.type = "lowpass";
     f.frequency.value = filterFreq;
     const g = ctx.createGain();
-    g.gain.setValueAtTime(gainValue, t);
+    g.gain.setValueAtTime(Math.max(0.0001, gainValue * soundGain()), t);
     src.connect(f).connect(g).connect(ctx.destination);
     src.start(t);
   };
@@ -50,7 +51,7 @@ function useAudio() {
     o.type = type;
     o.frequency.setValueAtTime(freq, t);
     if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
-    g.gain.setValueAtTime(gainValue, t);
+    g.gain.setValueAtTime(Math.max(0.0001, gainValue * soundGain()), t);
     g.gain.exponentialRampToValueAtTime(0.001, t + dur);
     o.connect(g).connect(ctx.destination);
     o.start(t);

@@ -16,7 +16,8 @@ import {
   faShieldHalved,
   faLanguage,
   faRankingStar,
-  faPlay
+  faPlay,
+  faGear
 } from '@fortawesome/free-solid-svg-icons';
 import TopUpModal from './shop/TopUpModal';
 import LanguageSwitcher from './LanguageSwitcher';
@@ -40,7 +41,8 @@ const NAV = [
   { id: 'top', label: 'Мировой топ', icon: faRankingStar, to: '/top' },
   { id: 'friends', label: 'Друзья', icon: faUserGroup, to: '/friends' },
   { id: 'shop', label: 'Магазин', icon: faStore, to: '/shop' },
-  { id: 'achievements', label: 'Достижения', icon: faTrophy, to: '/achievements' }
+  { id: 'achievements', label: 'Достижения', icon: faTrophy, to: '/achievements' },
+  { id: 'settings', label: 'Настройки', icon: faGear, to: '/settings' }
 ];
 
 // 100000 -> "100K", чтобы крупный баланс помещался в кнопку

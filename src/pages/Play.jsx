@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { soundGain } from '../services/settings';
 import { useNavigate, useParams } from 'react-router-dom';
 import roles from '../data/roles';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -169,7 +170,7 @@ function Play({ currentUser }) {
           filter.type = 'lowpass';
           filter.frequency.setValueAtTime(150, audioCtx.currentTime);
 
-          ambientGain.gain.setValueAtTime(0.35, audioCtx.currentTime);
+          ambientGain.gain.setValueAtTime(Math.max(0.0001, 0.35 * soundGain()), audioCtx.currentTime);
 
           subBass.connect(filter);
           screechOsc.connect(filter);
@@ -206,7 +207,7 @@ function Play({ currentUser }) {
             thunderFilter.frequency.exponentialRampToValueAtTime(25, audioCtx.currentTime + 3.8);
 
             const thunderGain = audioCtx.createGain();
-            thunderGain.gain.setValueAtTime(1.0, audioCtx.currentTime);
+            thunderGain.gain.setValueAtTime(Math.max(0.0001, soundGain()), audioCtx.currentTime);
             thunderGain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 3.9);
 
             noise.connect(thunderFilter);
