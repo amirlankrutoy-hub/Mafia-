@@ -1,110 +1,172 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faWandMagicSparkles, faXmark, faArrowLeft, faSun, faMoon } from "@fortawesome/free-solid-svg-icons";
 import { socket } from "../socket";
 import ABILITIES from "../data/abilities";
 import { getOwnedAbilities, consumeAbility } from "../services/abilitiesShop";
 import { toast } from "../services/toast";
+import Avatar from "./ui/Avatar";
 
 /**
- * Плавающая панель способностей — появляется на 10 секунд в начале
- * дневного голосования ("day") или ночи ("night").
+ * Способности в игре. Если мэр их разрешил, у каждого живого игрока на
+ * голосовании и ночью есть кнопка «Способность» — пока он не использует
+ * свою бесплатную способность. Купленные в магазине заряды дают ещё использования.
  */
 export default function AbilityBar({ phase, roomCode, players = [] }) {
-  const [windowInfo, setWindowInfo] = useState(null);
-  const [secondsLeft, setSecondsLeft] = useState(0);
+  const [state, setState] = useState(null);
+  const [open, setOpen] = useState(false);
   const [pendingTarget, setPendingTarget] = useState(null);
+  const [busy, setBusy] = useState(false);
   const [owned, setOwned] = useState(getOwnedAbilities());
 
-  useEffect(() => {
-    const onWindow = (info) => setWindowInfo(info);
-    socket.on("ability-window", onWindow);
-    return () => socket.off("ability-window", onWindow);
-  }, []);
+  const refresh = useCallback(() => {
+    socket.emit("ability:state", { roomCode }, (res) => setState(res || null));
+  }, [roomCode]);
 
   useEffect(() => {
-    const refresh = () => setOwned(getOwnedAbilities());
-    window.addEventListener("mafia-abilities-changed", refresh);
-    return () => window.removeEventListener("mafia-abilities-changed", refresh);
-  }, []);
-
-  useEffect(() => {
-    if (!windowInfo) return;
-    const tick = () => {
-      const left = Math.max(0, Math.ceil((windowInfo.expiresAt - Date.now()) / 1000));
-      setSecondsLeft(left);
-      if (left <= 0) setWindowInfo(null);
+    refresh();
+    // сервер открывает фазу чуть позже смены экрана — переспросим
+    const t = setTimeout(refresh, 800);
+    socket.on("ability-window", refresh);
+    socket.on("connect", refresh);
+    return () => {
+      clearTimeout(t);
+      socket.off("ability-window", refresh);
+      socket.off("connect", refresh);
     };
-    tick();
-    const id = setInterval(tick, 300);
-    return () => clearInterval(id);
-  }, [windowInfo]);
+  }, [refresh, phase]);
 
-  const isOpen = windowInfo && windowInfo.phase === phase && secondsLeft > 0;
-  const usable = ABILITIES.filter((a) => a.type === phase && (owned[a.id] || 0) > 0);
+  useEffect(() => {
+    const onOwned = () => setOwned(getOwnedAbilities());
+    window.addEventListener("mafia-abilities-changed", onOwned);
+    return () => window.removeEventListener("mafia-abilities-changed", onOwned);
+  }, []);
 
-  if (!isOpen || !usable.length) return null;
+  useEffect(() => {
+    setOpen(false);
+    setPendingTarget(null);
+  }, [phase]);
+
+  if (!state?.enabled || !state.alive || state.phase !== phase || state.usedThisPhase) return null;
+
+  const list = ABILITIES.filter((a) => a.type === phase);
+  const freeLeft = !state.freeUsed;
+  const available = list.filter((a) => freeLeft || (owned[a.id] || 0) > 0);
+  if (!available.length) return null;
 
   const activate = (ability, targetId) => {
-    socket.emit(
-      "ability:activate",
-      { roomCode, abilityId: ability.id, targetId },
-      (res) => {
-        if (!res?.success) {
-          toast({ kind: "error", text: res?.message || "Не удалось использовать способность" });
-          return;
-        }
-        consumeAbility(ability.id);
-        toast({ kind: "success", title: `${ability.name}: активировано`, text: res.info || undefined, duration: res.info ? 12000 : 4000 });
-        setPendingTarget(null);
+    if (busy) return;
+    setBusy(true);
+    const paid = !freeLeft;
+    socket.emit("ability:activate", { roomCode, abilityId: ability.id, targetId, paid }, (res) => {
+      setBusy(false);
+      if (!res?.success) {
+        toast({ kind: "error", text: res?.message || "Не удалось использовать способность" });
+        refresh();
+        return;
       }
-    );
+      if (!res.free) consumeAbility(ability.id);
+      toast({
+        kind: "success",
+        title: `${ability.name}: активировано`,
+        text: res.info || undefined,
+        duration: res.info ? 12000 : 5000
+      });
+      setOpen(false);
+      setPendingTarget(null);
+      refresh();
+    });
   };
 
-  return (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[650] w-[min(92vw,480px)] anim-fade-up">
-      <div className="noir-card p-3 shadow-[0_0_30px_rgba(212,175,55,0.35)]">
-        <div className="flex items-center justify-between px-1 mb-2">
-          <span className="text-[11px] font-bold uppercase tracking-widest text-[#d4af37]">
-            Способности
-          </span>
-          <span className="text-xs font-mono text-[#f3e5ab]">{secondsLeft}с</span>
-        </div>
+  const targets = players.filter((p) => p.alive !== false && p.id !== socket.id);
 
-        {pendingTarget ? (
-          <div className="space-y-1.5 max-h-48 overflow-y-auto">
-            <p className="text-[11px] text-[#c5a059] px-1">Выберите цель:</p>
-            {players
-              .filter((p) => p.alive !== false)
-              .map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => activate(pendingTarget, p.id)}
-                  className="w-full text-left px-3 py-1.5 rounded-lg bg-[#180e0a] border border-[#d4af37]/30 text-sm text-[#f3e5ab] hover:border-[#d4af37]"
-                >
-                  {p.name}
+  return (
+    <>
+      {!open && (
+        <button type="button" onClick={() => setOpen(true)} className="ability-launch fixed bottom-4 right-4 z-[650]">
+          <span className="ability-launch__icon">
+            <FontAwesomeIcon icon={faWandMagicSparkles} />
+          </span>
+          <span className="flex flex-col items-start leading-tight">
+            <span className="text-sm font-black">Способность</span>
+            <span className="text-[10px] font-bold opacity-75">{freeLeft ? "1 бесплатная за игру" : "из запаса"}</span>
+          </span>
+        </button>
+      )}
+
+      {open && (
+        <div className="fixed inset-0 z-[690] flex items-end justify-center bg-black/60 p-3 backdrop-blur-sm sm:items-center" onClick={() => setOpen(false)}>
+          <div className="ability-sheet w-full max-w-lg anim-fade-up" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3">
+              {pendingTarget ? (
+                <button type="button" onClick={() => setPendingTarget(null)} className="text-[#a8916c] hover:text-[#f3e5ab]" aria-label="Назад">
+                  <FontAwesomeIcon icon={faArrowLeft} />
                 </button>
-              ))}
-            <button
-              onClick={() => setPendingTarget(null)}
-              className="w-full text-center px-3 py-1 rounded-lg text-xs text-[#8b6b12]"
-            >
-              Отмена
-            </button>
-          </div>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {usable.map((a) => (
-              <button
-                key={a.id}
-                onClick={() => (a.needsTarget ? setPendingTarget(a) : activate(a))}
-                title={a.description}
-                className="btn btn-blood btn-sm"
-              >
-                {a.name} ({owned[a.id]})
+              ) : (
+                <span className="ability-sheet__phase">
+                  <FontAwesomeIcon icon={phase === "day" ? faSun : faMoon} />
+                </span>
+              )}
+              <div className="min-w-0 flex-1">
+                <h3 className="font-display text-xl font-black text-[#f3e5ab]">
+                  {pendingTarget ? pendingTarget.name : phase === "day" ? "Дневные способности" : "Ночные способности"}
+                </h3>
+                <p className="text-[11px] text-[#a8916c]">
+                  {pendingTarget
+                    ? "Выберите игрока"
+                    : freeLeft
+                      ? "Можно использовать одну способность бесплатно — выбирайте с умом"
+                      : "Бесплатная уже использована — тратятся купленные заряды"}
+                </p>
+              </div>
+              <button type="button" onClick={() => setOpen(false)} className="text-[#a8916c] hover:text-[#f3e5ab]" aria-label="Закрыть">
+                <FontAwesomeIcon icon={faXmark} />
               </button>
-            ))}
+            </div>
+
+            {pendingTarget ? (
+              <div className="mt-4 grid max-h-[50vh] grid-cols-3 gap-2 overflow-y-auto sm:grid-cols-4">
+                {targets.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    disabled={busy}
+                    onClick={() => activate(pendingTarget, p.id)}
+                    className="ability-target"
+                  >
+                    <Avatar src={p.avatar} size={48} />
+                    <span className="mt-1.5 w-full truncate text-xs font-bold text-[#f3e5ab]">{p.name}</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-4 space-y-2">
+                {list.map((a) => {
+                  const can = freeLeft || (owned[a.id] || 0) > 0;
+                  return (
+                    <button
+                      key={a.id}
+                      type="button"
+                      disabled={!can || busy}
+                      onClick={() => (a.needsTarget ? setPendingTarget(a) : activate(a))}
+                      className="ability-option"
+                    >
+                      <span className="ability-option__icon">
+                        <FontAwesomeIcon icon={a.icon} />
+                      </span>
+                      <span className="min-w-0 flex-1 text-left">
+                        <span className="block text-sm font-black text-[#f3e5ab]">{a.name}</span>
+                        <span className="block text-[11px] leading-snug text-[#a8916c]">{a.description}</span>
+                      </span>
+                      {!freeLeft && <span className="chip !text-[9px]">×{owned[a.id] || 0}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
-        )}
-      </div>
-    </div>
+        </div>
+      )}
+    </>
   );
 }

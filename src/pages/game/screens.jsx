@@ -387,7 +387,10 @@ export function VoteResult({ voteResult }) {
       ) : pardoned ? (
         <>
           <FontAwesomeIcon icon={faHandPeace} className="text-6xl text-emerald-400 anim-pop" />
-          <h1 className="mt-6 text-center font-display text-5xl font-black gold-text anim-blur-in">Мэр помиловал {pardoned.name}</h1>
+          <h1 className="mt-6 text-center font-display text-5xl font-black gold-text anim-blur-in">
+            {voteResult?.alibi ? `У ${pardoned.name} нашлось алиби!` : `Мэр помиловал ${pardoned.name}`}
+          </h1>
+          {voteResult?.alibi && <p className="mt-4 text-lg text-[#e6d5bc] anim-fade-up" style={{ "--i": 4 }}>Способность «Алиби» спасла игрока от казни.</p>}
         </>
       ) : (
         <>

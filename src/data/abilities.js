@@ -1,20 +1,34 @@
-// abilities.js — способности, которые можно купить за тени и использовать в игре.
-// Дневные — активируются в первые 10 секунд голосования.
-// Ночные — активируются в первые 10 секунд после начала ночи.
+// abilities.js — способности для игры.
+// Если мэр разрешил способности, каждый игрок может бесплатно использовать
+// одну способность за игру. Купленные за тени заряды дают дополнительные использования.
+// Дневные работают во время голосования, ночные — пока идёт ночь.
+import {
+  faVolumeXmark,
+  faCheckDouble,
+  faShieldHalved,
+  faMagnifyingGlass,
+  faUserSecret,
+  faHeartPulse,
+  faEye,
+  faDove
+} from "@fortawesome/free-solid-svg-icons";
 
 export const ABILITIES = [
   {
     id: "voice_change",
-    name: "Смена голоса",
+    name: "Глушитель",
     type: "day",
     price: 15,
-    description: "Скрывает ваше имя в этом раунде голосования — другие не увидят, кто вы."
+    needsTarget: true,
+    icon: faVolumeXmark,
+    description: "Голос выбранного игрока в этом раунде голосования не засчитывается."
   },
   {
     id: "extra_vote",
     name: "Двойной голос",
     type: "day",
     price: 25,
+    icon: faCheckDouble,
     description: "Ваш голос на этом голосовании считается за два."
   },
   {
@@ -22,6 +36,7 @@ export const ABILITIES = [
     name: "Неприкасаемый",
     type: "day",
     price: 30,
+    icon: faShieldHalved,
     description: "В этом раунде против вас нельзя проголосовать."
   },
   {
@@ -30,13 +45,23 @@ export const ABILITIES = [
     type: "day",
     price: 20,
     needsTarget: true,
+    icon: faMagnifyingGlass,
     description: "Узнайте фракцию одного игрока (мирные / мафия / нейтралы)."
+  },
+  {
+    id: "alibi",
+    name: "Алиби",
+    type: "day",
+    price: 30,
+    icon: faUserSecret,
+    description: "Если город приговорит вас на этом голосовании — у вас найдётся алиби, и казнь отменится."
   },
   {
     id: "night_immortality",
     name: "Бессмертие",
     type: "night",
     price: 35,
+    icon: faHeartPulse,
     description: "Вы не можете погибнуть этой ночью."
   },
   {
@@ -45,7 +70,17 @@ export const ABILITIES = [
     type: "night",
     price: 40,
     needsTarget: true,
+    icon: faEye,
     description: "Узнайте точную роль одного из игроков."
+  },
+  {
+    id: "guardian",
+    name: "Ангел-хранитель",
+    type: "night",
+    price: 30,
+    needsTarget: true,
+    icon: faDove,
+    description: "Выбранный игрок не может погибнуть этой ночью."
   }
 ];
 

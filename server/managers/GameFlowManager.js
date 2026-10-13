@@ -596,7 +596,9 @@ class GameFlowManager {
     const counts = {};
     room.voteCandidates.forEach((id) => (counts[id] = 0));
     const weights = room.abilityEffects?.extraVoteWeight || {};
+    const muted = room.abilityEffects?.muted || [];
     Object.entries(room.votes).forEach(([voterId, tid]) => {
+      if (muted.includes(voterId)) return;
       if (tid != null && counts[tid] != null) {
         counts[tid] += weights[voterId] || 1;
       }

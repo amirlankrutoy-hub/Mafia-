@@ -1,101 +1,243 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faMoon, faSun, faGavel, faShieldHalved, faArrowRight } from '@fortawesome/free-solid-svg-icons';
+import {
+  faMoon,
+  faSun,
+  faGavel,
+  faMasksTheater,
+  faTrophy,
+  faCrown,
+  faUserShield,
+  faUserSecret,
+  faSkull,
+  faWandMagicSparkles,
+  faScaleBalanced,
+  faComments,
+  faArrowRight,
+  faFeather,
+  faFire
+} from '@fortawesome/free-solid-svg-icons';
 import useSeo from '../hooks/useSeo';
+import ABILITIES from '../data/abilities';
+
+const STEPS = [
+  {
+    icon: faMasksTheater,
+    title: 'Раздача ролей',
+    text: 'Мэр создаёт комнату, игроки заходят по коду. Каждый тайно получает роль — её карточку видите только вы. Мафия сразу узнаёт своих напарников.'
+  },
+  {
+    icon: faMoon,
+    title: 'Ночь: город засыпает',
+    text: 'Роли просыпаются по очереди: мафия выбирает жертву, доктор лечит, шериф проверяет, нейтралы преследуют свои цели. Остальные ждут утра.'
+  },
+  {
+    icon: faSun,
+    title: 'Утро: итоги ночи',
+    text: 'Мэр объявляет, кто погиб, а кого удалось спасти. Начинается обсуждение: ищите противоречия, задавайте вопросы, защищайтесь.'
+  },
+  {
+    icon: faGavel,
+    title: 'Голосование',
+    text: 'Живые игроки голосуют, кого изгнать. Голосование тайное. При ничьей — переголосование между лидерами; повторная ничья — никого не казнят.'
+  },
+  {
+    icon: faScaleBalanced,
+    title: 'Приговор мэра',
+    text: 'Мэр утверждает казнь или милует осуждённого. После приговора снова опускается ночь — и так до победы одной из сторон.'
+  }
+];
+
+const TEAMS = [
+  {
+    icon: faUserShield,
+    name: 'Мирные жители',
+    tone: 'town',
+    goal: 'Вычислить и изгнать всю мафию и опасных нейтралов.',
+    tip: 'Ваше оружие — логика, голосование и роли вроде доктора и шерифа.'
+  },
+  {
+    icon: faUserSecret,
+    name: 'Мафия',
+    tone: 'mafia',
+    goal: 'Сравняться числом с мирными или превзойти их.',
+    tip: 'Ночью убивайте, днём притворяйтесь мирными. У семьи есть свой тайный чат.'
+  },
+  {
+    icon: faFire,
+    name: 'Нейтралы',
+    tone: 'neutral',
+    goal: 'У каждого своя цель: маньяк и потрошитель хотят остаться последними.',
+    tip: 'Не доверяйте никому — против вас и мафия, и город.'
+  }
+];
+
+const EXTRA = [
+  {
+    icon: faCrown,
+    title: 'Мэр — ведущий',
+    text: 'Мэр не играет за команду: он запускает фазы, объявляет итоги и утверждает приговор. Может исключить игрока за нарушение.'
+  },
+  {
+    icon: faSkull,
+    title: 'Лёгкий и сложный режим',
+    text: 'В лёгком режиме роль погибшего раскрывается. В сложном — город узнаёт только, от чьей руки он погиб.'
+  },
+  {
+    icon: faComments,
+    title: 'Чаты',
+    text: 'Общий чат открыт во время голосования. У мафии свой канал «Семья», пока жив хотя бы один напарник.'
+  },
+  {
+    icon: faFeather,
+    title: 'Выбывшие молчат',
+    text: 'Погибшие игроки остаются наблюдать за игрой, но не голосуют и не подсказывают живым.'
+  }
+];
 
 function Rules() {
-  useSeo({ title: 'Правила игры Мафия', description: 'Правила игры «Мафия» онлайн: роли, ночь и день, голосование, мэр-ведущий и условия победы мирных, мафии и нейтралов.', path: '/rules' });
-  const rulesList = [
-    {
-      step: '01',
-      title: 'Знакомство и распределение ролей',
-      icon: faShieldHalved,
-      description: 'В начале игры ведущий (или система) конфиденциально распределяет роли между игроками. Город делится на три лагеря: Мирные жители (пытаются вычислить мафию), Мафия (ночью устраняет жителей) и Одиночки / Нейтралы (преследуют собственные цели).'
-    },
-    {
-      step: '02',
-      title: 'Первая ночь: Город засыпает',
-      icon: faMoon,
-      description: 'Наступает ночная фаза. Все игроки закрывают глаза. По команде ведущего просыпается Мафия и знакомится друг с другом, выбирая свою первую жертву. Затем могут просыпаться активные мирные роли (Доктор, Шериф) и одиночки для совершения своих ночных действий.'
-    },
-    {
-      step: '03',
-      title: 'Утро и день: Город просыпается',
-      icon: faSun,
-      description: 'Ведущий объявляет итоги ночи: кто из игроков был убит или спасен. Начинается дневное обсуждение. Жители деликатно или бурно спорят, анализируют улики, ищут подозрительные совпадения и обвиняют друг друга в причастности к преступному клану.'
-    },
-    {
-      step: '04',
-      title: 'Дневное голосование (Суд семьи)',
-      icon: faGavel,
-      description: 'По окончании обсуждения проводится общее голосование. Игрок, набравший наибольшее количество голосов против себя, считается «арестованным» или изгнанным из города. Перед тем как покинуть игру, он имеет право на последнее слово.'
-    },
-    {
-      step: '05',
-      title: 'Условия победы',
-      icon: faArrowRight,
-      description: 'Игра продолжается чередованием фаз дня и ночи. Мирные жители побеждают, когда в городе не остается ни одного члена мафии и маньяка. Мафия побеждает, если их количество сравнивается или превышает количество оставшихся мирных жителей.'
-    }
-  ];
+  useSeo({
+    title: 'Правила игры Мафия',
+    description: 'Правила игры «Мафия» онлайн: роли, ночь и день, голосование, мэр-ведущий, способности и условия победы мирных, мафии и нейтралов.',
+    path: '/rules'
+  });
 
   return (
-    <div className="space-y-10 py-6 max-w-5xl mx-auto">
-      {/* Шапка страницы */}
-      <div className="relative overflow-hidden rounded-2xl border-2 border-[#d4af37] bg-gradient-to-b from-[#1c100b] via-[#120a07] to-[#080402] p-8 text-center shadow-[0_0_50px_rgba(212,175,55,0.25)]">
-        <h1 className="text-3xl sm:text-5xl font-black uppercase tracking-widest text-[#d4af37] drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">
-          Кодекс и Правила Игры
-        </h1>
-        <p className="mt-3 text-sm sm:text-base text-[#c5a059] max-w-2xl mx-auto italic">
-          Законы мафии суровы, но справедливы. Изучите поэтапный регламент проведения расследований и ночных операций.
-        </p>
-      </div>
+    <div className="mx-auto max-w-5xl space-y-12 px-3 py-6 sm:px-4">
+      {/* Шапка */}
+      <section className="ach-hero text-center anim-fade-up">
+        <div className="ach-hero__glow" />
+        <div className="relative">
+          <p className="text-[11px] font-bold uppercase tracking-[0.35em] text-[#a8916c]">Кодекс семьи</p>
+          <h1 className="ach-title mt-1 font-display text-4xl font-black sm:text-6xl">Правила игры</h1>
+          <p className="mx-auto mt-4 max-w-2xl text-sm text-[#c9b48f] sm:text-base">
+            Город засыпает — просыпается мафия. Всё, что нужно знать, чтобы выжить, вычислить врага и победить.
+          </p>
+          <div className="mt-6 flex flex-wrap justify-center gap-2">
+            <a href="#flow" className="ach-pill">Ход игры</a>
+            <a href="#teams" className="ach-pill">Команды</a>
+            <a href="#abilities" className="ach-pill">Способности</a>
+            <a href="#extra" className="ach-pill">Важно знать</a>
+          </div>
+        </div>
+      </section>
 
-      {/* Список правил по порядку */}
-      <div className="space-y-6">
-        {rulesList.map((rule, index) => (
-          <div
-            key={index}
-            className="group relative flex flex-col md:flex-row items-start md:items-center justify-between overflow-hidden rounded-xl border border-[#c5a059]/40 bg-gradient-to-r from-[#1c100b] via-[#120a07] to-[#0a0503] p-6 shadow-xl transition-all duration-300 hover:border-[#d4af37] hover:shadow-[0_0_25px_rgba(212,175,55,0.2)] gap-6"
-          >
-            {/* Декоративные уголки */}
-            <div className="absolute top-1.5 left-1.5 h-3 w-3 border-l-2 border-t-2 border-[#d4af37]/60 group-hover:border-[#d4af37]"></div>
-            <div className="absolute top-1.5 right-1.5 h-3 w-3 border-r-2 border-t-2 border-[#d4af37]/60 group-hover:border-[#d4af37]"></div>
-            <div className="absolute bottom-1.5 left-1.5 h-3 w-3 border-l-2 border-b-2 border-[#d4af37]/60 group-hover:border-[#d4af37]"></div>
-            <div className="absolute bottom-1.5 right-1.5 h-3 w-3 border-r-2 border-b-2 border-[#d4af37]/60 group-hover:border-[#d4af37]"></div>
-
-            {/* Номер и Иконка */}
-            <div className="flex items-center gap-4 shrink-0">
-              <span className="text-3xl sm:text-4xl font-black text-[#d4af37]/40 group-hover:text-[#d4af37] transition-colors font-mono">
-                {rule.step}
+      {/* Ход игры — таймлайн */}
+      <section id="flow" className="scroll-mt-6">
+        <SectionTitle icon={faMoon} title="Ход игры" />
+        <ol className="rules-timeline mt-6">
+          {STEPS.map((s, i) => (
+            <li key={s.title} className="rules-step anim-fade-up" style={{ '--i': i }}>
+              <span className="rules-step__node">
+                <FontAwesomeIcon icon={s.icon} />
               </span>
-              <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-[#d4af37]/50 bg-[#8b0000]/40 text-[#f3e5ab] shadow-inner group-hover:bg-[#d4af37] group-hover:text-black transition-all">
-                <FontAwesomeIcon icon={rule.icon} className="text-xl" />
+              <div className="rules-step__card">
+                <span className="rules-step__num">{String(i + 1).padStart(2, '0')}</span>
+                <h3 className="font-display text-xl font-black text-[#f3e5ab]">{s.title}</h3>
+                <p className="mt-1.5 text-sm leading-relaxed text-[#c9b48f]">{s.text}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      {/* Команды */}
+      <section id="teams" className="scroll-mt-6">
+        <SectionTitle icon={faTrophy} title="Команды и победа" />
+        <div className="mt-6 grid gap-4 md:grid-cols-3">
+          {TEAMS.map((t, i) => (
+            <div key={t.name} className={`rules-team rules-team--${t.tone} anim-scale-in`} style={{ '--i': i }}>
+              <span className="rules-team__icon">
+                <FontAwesomeIcon icon={t.icon} />
+              </span>
+              <h3 className="mt-3 font-display text-xl font-black text-[#f3e5ab]">{t.name}</h3>
+              <p className="mt-2 text-sm font-bold text-[#f3d27a]">{t.goal}</p>
+              <p className="mt-2 text-xs leading-relaxed text-[#a8916c]">{t.tip}</p>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 text-center">
+          <Link to="/roles" className="ach-pill">
+            Все роли и их способности <FontAwesomeIcon icon={faArrowRight} className="text-[10px]" />
+          </Link>
+        </div>
+      </section>
+
+      {/* Способности */}
+      <section id="abilities" className="scroll-mt-6">
+        <SectionTitle icon={faWandMagicSparkles} title="Способности" />
+        <p className="mx-auto mt-3 max-w-2xl text-center text-sm text-[#c9b48f]">
+          Если мэр разрешил способности, у каждого игрока появляется кнопка <b className="text-[#f3d27a]">«Способность»</b>. Одну
+          способность за игру можно использовать бесплатно, дополнительные заряды покупаются в магазине. Дневные работают во время
+          голосования, ночные — пока идёт ночь.
+        </p>
+        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          {ABILITIES.map((a, i) => (
+            <div key={a.id} className="ach-card flex items-start gap-3 anim-scale-in" style={{ '--i': i }}>
+              <span className="ability-option__icon">
+                <FontAwesomeIcon icon={a.icon} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-[#f3e5ab]">{a.name}</span>
+                  <span className={`chip !py-0 !text-[9px] ${a.type === 'day' ? '' : 'chip--muted'}`}>
+                    <FontAwesomeIcon icon={a.type === 'day' ? faSun : faMoon} className="mr-1" />
+                    {a.type === 'day' ? 'День' : 'Ночь'}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs leading-snug text-[#a8916c]">{a.description}</p>
               </div>
             </div>
+          ))}
+        </div>
+      </section>
 
-            {/* Описание правила */}
-            <div className="flex-1 space-y-2 text-left">
-              <h3 className="text-xl font-bold uppercase tracking-wider text-[#d4af37]">
-                {rule.title}
-              </h3>
-              <p className="text-xs sm:text-sm italic leading-relaxed text-[#c5a059]/90">
-                "{rule.description}"
-              </p>
+      {/* Важно знать */}
+      <section id="extra" className="scroll-mt-6">
+        <SectionTitle icon={faCrown} title="Важно знать" />
+        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          {EXTRA.map((e, i) => (
+            <div key={e.title} className="ach-card ach-card--done anim-scale-in" style={{ '--i': i }}>
+              <div className="flex items-center gap-3">
+                <span className="ach-medal ach-medal--done">
+                  <FontAwesomeIcon icon={e.icon} />
+                </span>
+                <h3 className="font-display text-lg font-black text-[#f3e5ab]">{e.title}</h3>
+              </div>
+              <p className="mt-2 text-sm leading-relaxed text-[#c9b48f]">{e.text}</p>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      </section>
 
-      {/* Кнопка возврата или перехода к игре */}
-      <div className="flex justify-center pt-4">
-        <Link
-          to="/play"
-          className="rounded-xl bg-gradient-to-r from-[#8b0000] to-[#5c0000] px-8 py-3 text-sm font-bold uppercase tracking-widest text-[#f3e5ab] border border-[#d4af37] shadow-lg transition-all hover:scale-105 hover:shadow-[0_0_20px_rgba(212,175,55,0.4)]"
-        >
-          🎮 Начать игру по правилам
-        </Link>
-      </div>
+      {/* Призыв */}
+      <section className="ach-legend ach-legend--done text-center">
+        <div className="ach-legend__sheen" />
+        <div className="relative">
+          <h2 className="font-display text-2xl font-black text-[#ffe9a8] sm:text-3xl">Готовы к первой ночи?</h2>
+          <p className="mt-2 text-sm text-[#c9b48f]">Соберите друзей и проверьте, кто из вас лучше всех врёт.</p>
+          <div className="mt-5 flex flex-wrap justify-center gap-3">
+            <Link to="/online" className="btn btn-gold">
+              Играть онлайн
+            </Link>
+            <Link to="/play" className="btn btn-ghost">
+              Офлайн с ведущим
+            </Link>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function SectionTitle({ icon, title }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="h-px flex-1 bg-gradient-to-r from-transparent to-[#d4af37]/50" />
+      <FontAwesomeIcon icon={icon} className="text-[#d4af37]" />
+      <h2 className="font-display text-2xl font-black text-[#f3e5ab] sm:text-3xl">{title}</h2>
+      <span className="h-px flex-1 bg-gradient-to-l from-transparent to-[#d4af37]/50" />
     </div>
   );
 }

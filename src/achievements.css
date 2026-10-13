@@ -417,3 +417,213 @@
   animation: pop 0.5s var(--ease-spring) 0.75s both;
 }
 .ach-flag__reward img { width: 15px; height: 15px; border-radius: 50%; }
+
+/* ============================================================
+   Способности в игре
+   ============================================================ */
+.ability-launch {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  border-radius: 999px;
+  border: 1px solid #fff1b8;
+  background: linear-gradient(135deg, #fff1b8, #f3d27a 45%, #c9971c);
+  padding: 0.4rem 1.1rem 0.4rem 0.4rem;
+  color: #2a1a02;
+  box-shadow: 0 0 24px rgba(255, 210, 90, 0.65), 0 10px 30px -10px rgba(0, 0, 0, 0.8);
+  animation: abilityPulse 2s ease-in-out infinite, fadeUp 0.6s var(--ease-out) both;
+  transition: transform 0.25s var(--ease-spring);
+}
+.ability-launch:hover { transform: translateY(-2px) scale(1.03); }
+.ability-launch__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #1a1004;
+  color: #f3d27a;
+}
+@keyframes abilityPulse {
+  0%, 100% { box-shadow: 0 0 18px rgba(255, 210, 90, 0.5), 0 10px 30px -10px rgba(0, 0, 0, 0.8); }
+  50% { box-shadow: 0 0 36px rgba(255, 225, 120, 0.95), 0 10px 30px -10px rgba(0, 0, 0, 0.8); }
+}
+.ability-sheet {
+  border-radius: 24px;
+  border: 1px solid rgba(212, 175, 55, 0.4);
+  background:
+    radial-gradient(120% 80% at 50% 0%, rgba(243, 210, 122, 0.12), transparent 60%),
+    linear-gradient(180deg, #1a100a, #0b0705);
+  padding: 1.1rem;
+  box-shadow: 0 0 60px rgba(212, 175, 55, 0.25), 0 30px 60px -20px rgba(0, 0, 0, 0.9);
+}
+.ability-sheet__phase {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff6cf, #f3d27a 40%, #b8860b 85%);
+  color: #3a2603;
+  box-shadow: 0 0 16px rgba(255, 210, 90, 0.6);
+}
+.ability-option {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.75rem;
+  border-radius: 16px;
+  border: 1px solid rgba(212, 175, 55, 0.2);
+  background: rgba(0, 0, 0, 0.35);
+  padding: 0.7rem 0.8rem;
+  transition: all 0.25s var(--ease-out);
+}
+.ability-option:not(:disabled):hover {
+  border-color: rgba(243, 210, 122, 0.7);
+  background: rgba(212, 175, 55, 0.08);
+  transform: translateX(3px);
+}
+.ability-option:disabled { opacity: 0.4; cursor: not-allowed; }
+.ability-option__icon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  border: 1px solid rgba(243, 210, 122, 0.45);
+  background: linear-gradient(160deg, #3a2a08, #1a1004);
+  color: #f3d27a;
+  font-size: 1.05rem;
+}
+.ability-target {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border-radius: 14px;
+  border: 1px solid rgba(212, 175, 55, 0.2);
+  background: rgba(0, 0, 0, 0.35);
+  padding: 0.6rem 0.4rem;
+  transition: all 0.2s var(--ease-out);
+}
+.ability-target:hover { border-color: #f3d27a; background: rgba(212, 175, 55, 0.1); }
+
+/* ============================================================
+   Правила
+   ============================================================ */
+.rules-timeline {
+  position: relative;
+  display: grid;
+  gap: 1rem;
+  padding-left: 0;
+  list-style: none;
+}
+.rules-timeline::before {
+  content: "";
+  position: absolute;
+  left: 25px;
+  top: 10px;
+  bottom: 10px;
+  width: 2px;
+  background: linear-gradient(180deg, transparent, rgba(212, 175, 55, 0.7) 10%, rgba(212, 175, 55, 0.7) 90%, transparent);
+  box-shadow: 0 0 10px rgba(243, 210, 122, 0.5);
+}
+.rules-step {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+}
+.rules-step__node {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 2px solid #fff1b8;
+  background: radial-gradient(circle at 35% 30%, #fff6cf, #f3d27a 40%, #b8860b 85%);
+  color: #3a2603;
+  font-size: 1.15rem;
+  box-shadow: 0 0 20px rgba(255, 210, 90, 0.55);
+}
+.rules-step__card {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid rgba(212, 175, 55, 0.25);
+  background:
+    radial-gradient(100% 120% at 0% 0%, rgba(243, 210, 122, 0.08), transparent 60%),
+    linear-gradient(160deg, #1c130d, #0d0806);
+  padding: 1rem 1.15rem;
+  transition: border-color 0.3s, transform 0.3s var(--ease-spring), box-shadow 0.3s;
+}
+.rules-step:hover .rules-step__card {
+  border-color: rgba(243, 210, 122, 0.6);
+  transform: translateX(4px);
+  box-shadow: 0 12px 34px -18px rgba(243, 210, 122, 0.6);
+}
+.rules-step__num {
+  position: absolute;
+  right: 14px;
+  top: 6px;
+  font-family: var(--font-display);
+  font-size: 2.6rem;
+  font-weight: 900;
+  line-height: 1;
+  color: rgba(212, 175, 55, 0.12);
+}
+.rules-team {
+  position: relative;
+  overflow: hidden;
+  border-radius: 22px;
+  border: 1px solid rgba(212, 175, 55, 0.25);
+  background: linear-gradient(170deg, #1c130d, #0b0705);
+  padding: 1.4rem 1.25rem;
+  text-align: center;
+  transition: transform 0.3s var(--ease-spring), box-shadow 0.3s;
+}
+.rules-team:hover { transform: translateY(-4px); }
+.rules-team::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 120px;
+  background: radial-gradient(70% 100% at 50% 0%, var(--team-glow), transparent 70%);
+}
+.rules-team > * { position: relative; }
+.rules-team--town { --team-glow: rgba(243, 210, 122, 0.25); }
+.rules-team--mafia { --team-glow: rgba(192, 21, 31, 0.35); border-color: rgba(192, 21, 31, 0.35); }
+.rules-team--neutral { --team-glow: rgba(147, 51, 234, 0.3); border-color: rgba(147, 51, 234, 0.3); }
+.rules-team__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 241, 184, 0.7);
+  background: radial-gradient(circle at 35% 30%, #fff6cf, #f3d27a 40%, #b8860b 85%);
+  color: #3a2603;
+  font-size: 1.4rem;
+  box-shadow: 0 0 22px rgba(255, 210, 90, 0.5);
+}
+.rules-team--mafia .rules-team__icon {
+  border-color: rgba(255, 150, 150, 0.6);
+  background: radial-gradient(circle at 35% 30%, #ff8a8a, #c0151f 50%, #5c0000);
+  color: #fff1e6;
+  box-shadow: 0 0 22px rgba(192, 21, 31, 0.6);
+}
+.rules-team--neutral .rules-team__icon {
+  border-color: rgba(216, 180, 254, 0.6);
+  background: radial-gradient(circle at 35% 30%, #e9d5ff, #9333ea 50%, #3b0764);
+  color: #faf5ff;
+  box-shadow: 0 0 22px rgba(147, 51, 234, 0.6);
+}

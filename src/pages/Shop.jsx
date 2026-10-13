@@ -1,3 +1,4 @@
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useEffect, useState } from "react";
 import roles from "../data/roles";
 import { EMOJIS, DECORATIONS, ADMIN_DECORATION } from "../data/shopData";
@@ -211,6 +212,10 @@ export default function Shop() {
               <img src="/krital.svg" alt="" className="inline h-5 w-5 object-contain align-[-2px] ml-0.5" />
             </span>
           </p>
+          <p className="mx-auto mb-6 max-w-2xl rounded-xl border border-[#d4af37]/25 bg-black/30 px-4 py-3 text-center text-sm text-[#e6d5bc]">
+            Если мэр разрешил способности, в каждой игре <b className="text-[#f3d27a]">одна способность — бесплатно</b>. Купленные заряды
+            дают дополнительные использования (не больше одной способности за голосование или ночь).
+          </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
             {ABILITIES.map((a) => (
               <div
@@ -218,7 +223,10 @@ export default function Shop() {
                 className="rounded-xl border border-[#c5a059]/40 bg-[#120a07] p-4 flex flex-col gap-2"
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-bold text-[#f3e5ab]">{a.name}</span>
+                  <span className="flex items-center gap-2 text-sm font-bold text-[#f3e5ab]">
+                    <span className="ability-option__icon !h-8 !w-8 !text-sm"><FontAwesomeIcon icon={a.icon} /></span>
+                    {a.name}
+                  </span>
                   <span
                     className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${
                       a.type === "day"

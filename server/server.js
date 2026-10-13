@@ -27,7 +27,6 @@ if (!process.env.ADMIN_PASSWORD) {
 const ADMIN_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const MAYOR_RECONNECT_GRACE_MS = 30000;
 const LOBBY_RECONNECT_GRACE_MS = 20000;
-const ABILITY_WINDOW_MS = 10000;
 const MAX_FRIENDS = 200;
 
 const db = store.load();
@@ -425,24 +424,61 @@ function emitPhase(room, data) {
     io.to(room.code).emit("game-phase", data);
 }
 
+// Способности доступны всю фазу (голосование днём / ночь). Каждый игрок
+// бесплатно использует одну способность за игру; купленные в магазине
+// заряды дают дополнительные использования (не больше одной за фазу).
 function openAbilityWindow(room, phase) {
-    room.abilityWindow = { phase, expiresAt: Date.now() + ABILITY_WINDOW_MS };
+    room.abilityWindow = { phase, id: `${room.gameId}:${phase}:${phase === "day" ? room.day : room.night}:${room.voteRound || 0}` };
+    const prev = room.abilityEffects || {};
     room.abilityEffects = {
         extraVoteWeight: {},
         voteImmune: [],
-        nightImmune: room.abilityEffects && phase === "day" ? room.abilityEffects.nightImmune : [],
-        hiddenNames: []
+        muted: [],
+        alibi: [],
+        // ночная защита действует только на свою ночь
+        nightImmune: phase === "day" ? prev.nightImmune || [] : []
     };
-    io.to(room.code).emit("ability-window", room.abilityWindow);
+    io.to(room.code).emit("ability-window", { phase });
+}
+
+function abilityKey(p) {
+    return p.accountId ? `a:${p.accountId}` : `n:${p.name}`;
+}
+
+function abilityUsage(room) {
+    if (!room.abilityUsage || room.abilityUsage.gameId !== room.gameId) {
+        room.abilityUsage = { gameId: room.gameId, free: {}, perWindow: {} };
+    }
+    return room.abilityUsage;
+}
+
+function abilityState(room, socketId) {
+    const self = room.players.find((p) => p.id === socketId);
+    const enabled = !!room.started && room.abilitiesEnabled !== false;
+    const win = room.abilityWindow;
+    const activePhase =
+        win && ((win.phase === "day" && room.phase === "voting") || (win.phase === "night" && room.phase === "night")) ? win.phase : null;
+    if (!self) return { enabled: false };
+    const usage = abilityUsage(room);
+    const key = abilityKey(self);
+    return {
+        enabled,
+        alive: self.alive !== false,
+        phase: activePhase,
+        freeUsed: !!usage.free[key],
+        usedThisPhase: !!(win && usage.perWindow[`${win.id}|${key}`])
+    };
 }
 
 const ABILITY_DEFS = {
-    voice_change: { type: "day" },
+    voice_change: { type: "day", needsTarget: true },
     extra_vote: { type: "day" },
     vote_immunity: { type: "day" },
     reveal_faction: { type: "day", needsTarget: true },
+    alibi: { type: "day" },
     night_immortality: { type: "night" },
-    reveal_role: { type: "night", needsTarget: true }
+    reveal_role: { type: "night", needsTarget: true },
+    guardian: { type: "night", needsTarget: true }
 };
 const FACTION_LABELS = {
     civilians: "Мирные жители",
@@ -636,7 +672,7 @@ function remapSocketId(room, oldId, newId) {
     if (room._mafiaTieBreak) room._mafiaTieBreak.target = swap(room._mafiaTieBreak.target);
     const eff = room.abilityEffects;
     if (eff) {
-        ["voteImmune", "nightImmune", "hiddenNames"].forEach((k) => (eff[k] = (eff[k] || []).map(swap)));
+        ["voteImmune", "nightImmune", "muted", "alibi"].forEach((k) => (eff[k] = (eff[k] || []).map(swap)));
         if (eff.extraVoteWeight[oldId]) {
             eff.extraVoteWeight[newId] = eff.extraVoteWeight[oldId];
             delete eff.extraVoteWeight[oldId];
@@ -1035,9 +1071,15 @@ io.on("connection", (socket) => {
     });
 
     // ==========================
-    // Способности (10 сек окно в начале дня/ночи)
+    // Способности: одна бесплатная за игру + купленные заряды
     // ==========================
-    on(socket, "ability:activate", ({ roomCode, abilityId, targetId } = {}, cb) => {
+    on(socket, "ability:state", ({ roomCode } = {}, cb) => {
+        const done = ack(cb);
+        const room = RoomManager.getRoom(roomCode);
+        done(room ? abilityState(room, socket.id) : { enabled: false });
+    });
+
+    on(socket, "ability:activate", ({ roomCode, abilityId, targetId, paid } = {}, cb) => {
         const done = ack(cb);
         const room = RoomManager.getRoom(roomCode);
         if (!room) return done({ success: false, message: "Комната не найдена" });
@@ -1046,21 +1088,33 @@ io.on("connection", (socket) => {
         }
         const def = ABILITY_DEFS[abilityId];
         if (!def) return done({ success: false, message: "Неизвестная способность" });
-        if (!room.abilityWindow || Date.now() > room.abilityWindow.expiresAt) {
-            return done({ success: false, message: "Окно активации закрыто" });
-        }
-        if (room.abilityWindow.phase !== def.type) {
-            return done({ success: false, message: "Сейчас нельзя использовать эту способность" });
+        const state = abilityState(room, socket.id);
+        if (!state.phase) return done({ success: false, message: "Способности работают на голосовании и ночью" });
+        if (state.phase !== def.type) {
+            return done({ success: false, message: def.type === "day" ? "Эта способность — для дневного голосования" : "Эта способность работает только ночью" });
         }
         const self = room.players.find((p) => p.id === socket.id && p.alive !== false);
         if (!self) return done({ success: false, message: "Недоступно" });
-        if (def.needsTarget && !targetId) return done({ success: false, message: "Нужна цель" });
+        if (state.usedThisPhase) return done({ success: false, message: "В этой фазе вы уже использовали способность" });
+        if (state.freeUsed && !paid) return done({ success: false, message: "Вы уже использовали способность в этой игре" });
+        if (def.needsTarget && (!targetId || targetId === socket.id)) return done({ success: false, message: "Выберите другого игрока" });
+        const target = def.needsTarget ? room.players.find((p) => p.id === targetId && p.alive !== false) : null;
+        if (def.needsTarget && !target) return done({ success: false, message: "Цель не найдена" });
 
         const eff = room.abilityEffects;
         let info = null;
         switch (abilityId) {
             case "voice_change":
-                eff.hiddenNames.push(socket.id);
+                eff.muted.push(targetId);
+                info = `Голос игрока ${target.name} в этом раунде не будет засчитан.`;
+                break;
+            case "alibi":
+                eff.alibi.push(socket.id);
+                info = "Если город приговорит вас сегодня — у вас найдётся алиби.";
+                break;
+            case "guardian":
+                eff.nightImmune.push(targetId);
+                info = `${target.name} под вашей защитой до утра.`;
                 break;
             case "extra_vote":
                 eff.extraVoteWeight[socket.id] = (eff.extraVoteWeight[socket.id] || 1) + 1;
@@ -1086,7 +1140,12 @@ io.on("connection", (socket) => {
             default:
                 return done({ success: false, message: "Неизвестная способность" });
         }
-        done({ success: true, info });
+        const usage = abilityUsage(room);
+        const key = abilityKey(self);
+        const free = !usage.free[key];
+        if (free) usage.free[key] = abilityId;
+        usage.perWindow[`${room.abilityWindow.id}|${key}`] = abilityId;
+        done({ success: true, info, free });
     });
 
     // ==========================
@@ -1459,13 +1518,15 @@ io.on("connection", (socket) => {
     on(socket, "mayor-execute", (roomCode, pardon) => {
         const room = requireMayor(roomCode);
         if (!room) return;
-        const executed = GameFlowManager.executePending(roomCode, pardon === true);
+        const pendingId = room.pendingExecution?.id;
+        const alibi = pardon !== true && !!pendingId && (room.abilityEffects?.alibi || []).includes(pendingId);
+        const executed = GameFlowManager.executePending(roomCode, pardon === true || alibi);
         if (!executed) return;
 
         if (executed.pardoned) {
             emitPhase(room, {
                 phase: "vote_result",
-                voteResult: { type: "pardoned", pardoned: { id: executed.id, name: executed.name } },
+                voteResult: { type: "pardoned", alibi, pardoned: { id: executed.id, name: executed.name } },
                 players: publicPlayers(room)
             });
             afterDay(room);
