@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useCallback } from "react";
+import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
+import { setPageLanguage } from "../i18n/autoTranslate";
 import { translations, LANGUAGES } from "../i18n/index";
 
 const STORAGE_KEY = "mafia_language";
@@ -17,6 +18,11 @@ function getInitialLanguage() {
 
 export function LanguageProvider({ children }) {
   const [language, setLanguageState] = useState(getInitialLanguage);
+
+  // Переводим весь сайт, а не только надписи с ключами t()
+  useEffect(() => {
+    setPageLanguage(language);
+  }, [language]);
 
   const setLanguage = useCallback((code) => {
     if (!translations[code]) return;

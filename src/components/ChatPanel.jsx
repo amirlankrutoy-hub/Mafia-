@@ -102,6 +102,7 @@ export default function ChatPanel({ roomCode, channels, className = "bottom-24 r
                       {mine ? "Вы" : m.name}
                     </div>
                     <div
+                      translate="no"
                       className={`inline-block break-words rounded-2xl px-3 py-1.5 text-left text-sm ${
                         isMafia
                           ? "bg-red-900/50 text-red-50 ring-1 ring-red-500/30"

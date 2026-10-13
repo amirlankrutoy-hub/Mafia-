@@ -85,7 +85,7 @@ export default function DirectChat({ friend, myId, onClose }) {
                         : "rounded-bl-md bg-black/45 text-[#e6d5bc] ring-1 ring-white/5"
                     }`}
                   >
-                    <div className="whitespace-pre-wrap break-words">{m.text}</div>
+                    <div className="whitespace-pre-wrap break-words" translate="no">{m.text}</div>
                     <div className={`mt-0.5 text-[10px] ${mine ? "text-right text-[#f3d27a]/60" : "text-[#a8916c]/70"}`}>{timeLabel(m.at)}</div>
                   </div>
                 </div>
