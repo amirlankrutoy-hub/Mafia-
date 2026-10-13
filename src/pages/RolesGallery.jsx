@@ -1,153 +1,202 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import roles from '../data/roles';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faArrowRight } from '@fortawesome/free-solid-svg-icons';
-import { RARITIES, ROLE_RARITY } from '../data/chests';
+import { faLock, faArrowRight, faGem, faMoon } from '@fortawesome/free-solid-svg-icons';
+import roles from '../data/roles';
+import { RARITIES, ROLE_RARITY, BASE_ROLES } from '../data/chests';
+import { TEAMS, ALL_TEAMS, TEAM_ORDER } from '../data/teams';
 import { ownsRole } from '../services/wallet';
 import { isRoleDisabled } from '../services/admin';
 import useSeo from '../hooks/useSeo';
+import '../roles.css';
 
-function getTeamBadgeStyle(category) {
-  switch (category) {
-    case 'mafia':
-      return 'border-red-600/60 bg-red-950/80 text-red-300';
-    case 'neutrals':
-      return 'border-purple-600/60 bg-purple-950/80 text-purple-300';
-    case 'civilians':
-    default:
-      return 'border-emerald-600/60 bg-emerald-950/80 text-emerald-300';
-  }
+/** Карточка с лёгким 3D-наклоном за курсором */
+export function TiltCard({ className = '', style, children, max = 8 }) {
+  const ref = useRef(null);
+  const onMove = (e) => {
+    const el = ref.current;
+    if (!el || e.pointerType === 'touch') return;
+    const r = el.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width;
+    const y = (e.clientY - r.top) / r.height;
+    el.style.setProperty('--rx', `${(0.5 - y) * max}deg`);
+    el.style.setProperty('--ry', `${(x - 0.5) * max}deg`);
+    el.style.setProperty('--mx', `${x * 100}%`);
+    el.style.setProperty('--my', `${y * 100}%`);
+  };
+  const reset = () => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.setProperty('--rx', '0deg');
+    el.style.setProperty('--ry', '0deg');
+  };
+  return (
+    <div ref={ref} className={`tilt ${className}`} style={style} onPointerMove={onMove} onPointerLeave={reset}>
+      {children}
+    </div>
+  );
+}
+
+function RoleCard({ role, i }) {
+  const team = TEAMS[role.category] || TEAMS.civilians;
+  const rarity = RARITIES[ROLE_RARITY[role.id]];
+  const owned = ownsRole(role.id);
+  const isBase = BASE_ROLES.includes(role.id);
+  return (
+    <Link to={`/role/${role.id}`} className="block anim-scale-in" style={{ '--i': Math.min(i, 12) }}>
+      <TiltCard className={`role-card ${owned ? '' : 'role-card--locked'}`} style={{ '--team': team.color, '--team-glow': team.glow, '--rar': rarity?.color }}>
+        <div className="role-card__frame">
+          <img src={role.image} alt={role.name} className="role-card__img" loading="lazy" />
+          <div className="role-card__shade" />
+          <div className="role-card__shine" />
+
+          <span className="role-card__team">
+            <FontAwesomeIcon icon={team.icon} /> {team.short}
+          </span>
+          {rarity && (
+            <span className="role-card__rarity" title={isBase ? 'Базовая — есть у всех' : rarity.label}>
+              <FontAwesomeIcon icon={faGem} />
+            </span>
+          )}
+
+          {!owned && (
+            <div className="role-card__lock">
+              <span className="role-card__lock-icon">
+                <FontAwesomeIcon icon={faLock} />
+              </span>
+              <span className="text-[11px] font-bold text-[#f3e5ab]">Выпадает из сундуков</span>
+            </div>
+          )}
+
+          <div className="role-card__info">
+            <span className="text-[10px] font-black uppercase tracking-[0.2em]" style={{ color: rarity?.color }}>
+              {isBase ? 'Базовая' : rarity?.label}
+            </span>
+            <h3 className="font-display text-2xl font-black leading-tight text-[#fff1c4]">{role.name}</h3>
+            <p className="role-card__desc">{role.description}</p>
+            <p className="role-card__ability">
+              <FontAwesomeIcon icon={faMoon} className="mr-1.5 opacity-70" />
+              {role.ability}
+            </p>
+            <span className="role-card__more">
+              Досье <FontAwesomeIcon icon={faArrowRight} />
+            </span>
+          </div>
+        </div>
+      </TiltCard>
+    </Link>
+  );
 }
 
 const RolesGallery = () => {
-  useSeo({ title: 'Все роли игры Мафия', description: 'Все 12 ролей игры «Мафия» в Mafia Play: Доктор, Шериф, Красотка, Священник, Мафиози, Крёстный отец, Вор, Маньяк, Потрошитель, Поклонница, Стукач, Обыватель — способности и цели.', path: '/roles' });
-  const [activeCategory, setActiveCategory] = useState('all');
+  useSeo({
+    title: 'Все роли игры Мафия',
+    description:
+      'Все 12 ролей игры «Мафия» в Mafia Play: Доктор, Шериф, Красотка, Священник, Мафиози, Крёстный отец, Вор, Маньяк, Потрошитель, Поклонница, Стукач, Обыватель — способности и цели.',
+    path: '/roles'
+  });
+  const [active, setActive] = useState('all');
   const [, force] = useState(0);
   useEffect(() => {
     const refresh = () => force((n) => n + 1);
     window.addEventListener('mafia-roles-disabled-changed', refresh);
-    return () => window.removeEventListener('mafia-roles-disabled-changed', refresh);
+    window.addEventListener('mafia-wallet-changed', refresh);
+    return () => {
+      window.removeEventListener('mafia-roles-disabled-changed', refresh);
+      window.removeEventListener('mafia-wallet-changed', refresh);
+    };
   }, []);
 
-  const filteredRoles = roles.filter((role) => {
+  const visible = roles.filter((role) => {
     const dis = isRoleDisabled(role.id);
-    if (dis && !dis.until) return false;
-    if (activeCategory === 'all') return true;
-    return role.category === activeCategory;
+    return !(dis && !dis.until);
   });
+  const ownedCount = visible.filter((r) => ownsRole(r.id)).length;
+  const pct = visible.length ? Math.round((ownedCount / visible.length) * 100) : 0;
+  const filters = [ALL_TEAMS, ...TEAM_ORDER.map((t) => TEAMS[t])];
+  const groups = (active === 'all' ? TEAM_ORDER : [active]).map((t) => ({
+    team: TEAMS[t],
+    list: visible.filter((r) => r.category === t)
+  }));
 
   return (
-    <div className="space-y-6 py-6">
-      <div className="text-center space-y-4">
-        <p className="eyebrow anim-fade-up">Картотека семьи</p>
-        <h1 className="font-display text-4xl sm:text-5xl font-black gold-text anim-blur-in">
-          Персонажи и карты
-        </h1>
-
-        <div className="flex flex-wrap justify-center gap-2 sm:gap-3 pt-2">
-          <button
-            onClick={() => setActiveCategory('all')}
-            className={`rounded-xl border px-4 py-2 text-xs sm:text-sm font-bold uppercase tracking-wider transition-all ${
-              activeCategory === 'all'
-                ? 'border-[#d4af37] bg-[#8b0000] text-[#f3e5ab] shadow-[0_0_15px_rgba(212,175,55,0.4)]'
-                : 'border-[#c5a059]/40 bg-[#120a07] text-[#c5a059] hover:border-[#d4af37]'
-            }`}
-          >
-            Вся семья
-          </button>
-
-          <button
-            onClick={() => setActiveCategory('civilians')}
-            className={`rounded-xl border px-4 py-2 text-xs sm:text-sm font-bold uppercase tracking-wider transition-all ${
-              activeCategory === 'civilians'
-                ? 'border-emerald-500 bg-emerald-950 text-emerald-200 shadow-[0_0_15px_rgba(16,185,129,0.3)]'
-                : 'border-[#c5a059]/40 bg-[#120a07] text-[#c5a059] hover:border-emerald-500'
-            }`}
-          >
-            Жители
-          </button>
-
-          <button
-            onClick={() => setActiveCategory('mafia')}
-            className={`rounded-xl border px-4 py-2 text-xs sm:text-sm font-bold uppercase tracking-wider transition-all ${
-              activeCategory === 'mafia'
-                ? 'border-red-600 bg-red-950 text-red-200 shadow-[0_0_15px_rgba(220,38,38,0.3)]'
-                : 'border-[#c5a059]/40 bg-[#120a07] text-[#c5a059] hover:border-red-600'
-            }`}
-          >
-            Мафии
-          </button>
-
-          <button
-            onClick={() => setActiveCategory('neutrals')}
-            className={`rounded-xl border px-4 py-2 text-xs sm:text-sm font-bold uppercase tracking-wider transition-all ${
-              activeCategory === 'neutrals'
-                ? 'border-purple-600 bg-purple-950 text-purple-200 shadow-[0_0_15px_rgba(147,51,234,0.3)]'
-                : 'border-[#c5a059]/40 bg-[#120a07] text-[#c5a059] hover:border-purple-600'
-            }`}
-          >
-            Нейтралы и Одиночки
-          </button>
+    <div className="mx-auto max-w-6xl space-y-8 py-6">
+      {/* Шапка */}
+      <section className="roles-hero anim-fade-up">
+        <div className="roles-hero__cards" aria-hidden="true">
+          {visible.slice(0, 5).map((r, i) => (
+            <img key={r.id} src={r.image} alt="" style={{ '--k': i }} />
+          ))}
         </div>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-        {filteredRoles.map((role) => (
-          <Link
-            key={role.id}
-            to={`/role/${role.id}`}
-            className="group relative flex flex-col justify-between overflow-hidden rounded-xl border border-[#c5a059]/40 bg-gradient-to-b from-[#1c100b] via-[#120a07] to-[#0a0503] p-4 shadow-xl transition-all duration-300 hover:-translate-y-1 hover:border-[#d4af37] hover:shadow-[0_0_20px_rgba(212,175,55,0.2)]"
-          >
-            <div className="absolute top-1.5 left-1.5 h-3 w-3 border-l-2 border-t-2 border-[#d4af37]/60 group-hover:border-[#d4af37]"></div>
-            <div className="absolute top-1.5 right-1.5 h-3 w-3 border-r-2 border-t-2 border-[#d4af37]/60 group-hover:border-[#d4af37]"></div>
-            <div className="absolute bottom-1.5 left-1.5 h-3 w-3 border-l-2 border-b-2 border-[#d4af37]/60 group-hover:border-[#d4af37]"></div>
-            <div className="absolute bottom-1.5 right-1.5 h-3 w-3 border-r-2 border-b-2 border-[#d4af37]/60 group-hover:border-[#d4af37]"></div>
-
-            <div>
-              <div className="relative aspect-[2/3] w-full overflow-hidden rounded-lg border border-[#c5a059]/30 bg-black">
-                <img
-                  src={role.image}
-                  alt={role.name}
-                  className={`h-full w-full object-cover transition-transform duration-500 group-hover:scale-105 ${
-                    ownsRole(role.id) ? '' : 'opacity-40 grayscale'
-                  }`}
-                />
-                {!ownsRole(role.id) && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/30">
-                    <span className="text-5xl drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]">🔒</span>
-                    <span className="rounded-md bg-black/70 border border-[#d4af37]/60 px-2 py-0.5 text-xs font-bold text-[#d4af37]">
-                      {RARITIES[ROLE_RARITY[role.id]]?.label || "Редкая"} · из сундуков
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-3 text-center space-y-1.5">
-                <div>
-                  <span className={`inline-block rounded-md border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${getTeamBadgeStyle(role.category)}`}>
-                    {role.team}
-                  </span>
-                </div>
-
-                <h3 className="text-xl font-bold uppercase tracking-wider text-[#d4af37]">
-                  {role.name}
-                </h3>
-
-                <p className="text-xs italic text-[#c5a059]/90 line-clamp-3">
-                  "{role.description}"
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-4 border-t border-[#c5a059]/20 pt-3 text-center">
-              <span className="inline-block w-full rounded-lg border border-[#d4af37]/50 px-4 py-2 text-xs font-bold uppercase tracking-[0.2em] text-[#f3e5ab] transition-all duration-300 group-hover:border-[#d4af37] group-hover:text-white group-hover:shadow-[0_0_15px_rgba(212,175,55,0.4)]">
-                Досье <FontAwesomeIcon icon={faArrowRight} className="text-[#d4af37] transition-colors group-hover:text-white" />
+        <div className="relative max-w-xl">
+          <p className="text-[11px] font-bold uppercase tracking-[0.35em] text-[#a8916c]">Картотека семьи</p>
+          <h1 className="ach-title mt-1 font-display text-5xl font-black sm:text-6xl">Роли</h1>
+          <p className="mt-3 text-sm text-[#c9b48f]">
+            {visible.length} персонажей, три стороны и у каждого своя цель. Узнайте, кто на что способен, — и кого опасаться ночью.
+          </p>
+          <div className="mt-5 max-w-sm">
+            <div className="flex justify-between text-xs">
+              <span className="font-bold text-[#e6d5bc]">Ваша коллекция</span>
+              <span className="font-mono text-[#f3d27a]">
+                {ownedCount} / {visible.length}
               </span>
             </div>
-          </Link>
-        ))}
-      </div>
+            <div className="ach-bar mt-1.5 !h-2">
+              <div className="ach-bar__fill" style={{ width: `${pct}%` }} />
+            </div>
+            {ownedCount < visible.length && (
+              <Link to="/shop?tab=chests" className="mt-3 inline-flex items-center gap-2 text-xs font-bold text-[#f3d27a] hover:underline">
+                Открыть сундуки и собрать все роли <FontAwesomeIcon icon={faArrowRight} />
+              </Link>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* Фильтр по командам */}
+      <nav className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+        {filters.map((t) => {
+          const count = t.id === 'all' ? visible.length : visible.filter((r) => r.category === t.id).length;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setActive(t.id)}
+              className={`team-filter ${active === t.id ? 'team-filter--active' : ''}`}
+              style={{ '--team': t.color, '--team-glow': t.glow }}
+            >
+              <span className="team-filter__icon">
+                <FontAwesomeIcon icon={t.icon} />
+              </span>
+              <span className="min-w-0 text-left">
+                <span className="block truncate text-sm font-black">{t.label}</span>
+                <span className="block text-[10px] opacity-70">{count} ролей</span>
+              </span>
+            </button>
+          );
+        })}
+      </nav>
+
+      {groups.map(({ team, list }) =>
+        list.length ? (
+          <section key={team.id}>
+            <div className="mb-4 flex flex-wrap items-end justify-between gap-2" style={{ '--team': team.color }}>
+              <h2 className="flex items-center gap-3 font-display text-2xl font-black text-[#f3e5ab] sm:text-3xl">
+                <span className="team-dot">
+                  <FontAwesomeIcon icon={team.icon} />
+                </span>
+                {team.label}
+              </h2>
+              <p className="text-xs text-[#a8916c]">Цель: {team.goal}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-3 lg:grid-cols-4">
+              {list.map((role, i) => (
+                <RoleCard key={role.id} role={role} i={i} />
+              ))}
+            </div>
+          </section>
+        ) : null
+      )}
     </div>
   );
 };
