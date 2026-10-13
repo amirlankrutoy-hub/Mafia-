@@ -1,40 +1,89 @@
 import React, { useEffect, useState } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { categoryOf } from "../data/achievementCategories";
+import "../achievements.css";
 
+const SHOW_MS = 4600;
+const LEAVE_MS = 650;
+
+// Искры, разлетающиеся от медали
+const SPARKS = Array.from({ length: 18 }, (_, i) => {
+  const angle = (i / 18) * Math.PI * 2;
+  const dist = 70 + (i % 3) * 28;
+  return {
+    x: Math.cos(angle) * dist,
+    y: Math.sin(angle) * dist,
+    delay: 0.45 + (i % 4) * 0.06,
+    size: 4 + (i % 3) * 2
+  };
+});
+
+/**
+ * Флаг-вымпел «Достижение выполнено»: спускается сверху с жёлтым свечением,
+ * лучами, искрами и бликом. Несколько достижений показываются по очереди.
+ */
 const AchievementToast = () => {
+  const [queue, setQueue] = useState([]);
   const [current, setCurrent] = useState(null);
+  const [leaving, setLeaving] = useState(false);
 
   useEffect(() => {
-    const onUnlocked = (e) => {
-      setCurrent(e.detail);
-      setTimeout(() => setCurrent(null), 2000);
-    };
+    const onUnlocked = (e) => setQueue((q) => [...q, { ...e.detail, key: `${e.detail.id}-${Date.now()}` }]);
     window.addEventListener("mafia-achievement-unlocked", onUnlocked);
     return () => window.removeEventListener("mafia-achievement-unlocked", onUnlocked);
   }, []);
 
+  useEffect(() => {
+    if (current || !queue.length) return;
+    setCurrent(queue[0]);
+    setQueue((q) => q.slice(1));
+    setLeaving(false);
+  }, [queue, current]);
+
+  useEffect(() => {
+    if (!current) return;
+    const t = setTimeout(() => setLeaving(true), SHOW_MS);
+    return () => clearTimeout(t);
+  }, [current]);
+
+  useEffect(() => {
+    if (!leaving) return;
+    const t = setTimeout(() => {
+      setCurrent(null);
+      setLeaving(false);
+    }, LEAVE_MS);
+    return () => clearTimeout(t);
+  }, [leaving]);
+
   if (!current) return null;
+  const cat = categoryOf(current);
 
   return (
-    <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[200] animate-fadeIn">
-      <div
-        className={`flex items-center gap-3 rounded-xl border-2 px-4 py-2.5 shadow-[0_0_25px_rgba(212,175,55,0.4)] backdrop-blur-md ${
-          current.gold
-            ? "border-[#ffd76a] bg-gradient-to-r from-[#4a3a05] via-[#2a1f04] to-[#4a3a05]"
-            : "border-[#d4af37] bg-[#140b07]/95"
-        }`}
-      >
-        <img src="/krital.svg" alt="" className="w-7 h-7 rounded-full" />
-        <div className="text-left">
-          <div
-            className={`text-[10px] font-bold uppercase tracking-widest ${
-              current.gold ? "text-[#ffe9a8]" : "text-[#d4af37]"
-            }`}
-          >
-            Достижение выполнено
-          </div>
-          <div className="text-sm font-black text-[#f3e5ab]">{current.title}</div>
-        </div>
-        <span className="ml-2 text-xs font-bold text-[#d4af37]">+{current.reward}</span>
+    <div className="pointer-events-none fixed inset-x-0 top-0 z-[300] flex justify-center" style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}>
+      <div className={`ach-flag-wrap ${leaving ? "ach-flag-wrap--leave" : ""} ${current.gold ? "ach-flag-wrap--gold" : ""}`} key={current.key}>
+        <div className="ach-flag__aura" />
+        <div className="ach-flag__rays" />
+        <button type="button" className="ach-flag pointer-events-auto" onClick={() => setLeaving(true)} aria-label="Закрыть">
+          <span className="ach-flag__rod" />
+          <span className="ach-flag__body">
+            <span className="ach-flag__sheen" />
+            <span className="ach-flag__label">{current.gold ? "Легендарное достижение" : "Достижение выполнено"}</span>
+            <span className="ach-flag__medal">
+              <FontAwesomeIcon icon={cat.icon} />
+              {SPARKS.map((s, i) => (
+                <i
+                  key={i}
+                  className="ach-flag__spark"
+                  style={{ "--x": `${s.x}px`, "--y": `${s.y}px`, "--d": `${s.delay}s`, width: s.size, height: s.size }}
+                />
+              ))}
+            </span>
+            <span className="ach-flag__title">{current.title}</span>
+            <span className="ach-flag__reward">
+              <img src="/krital.svg" alt="" />+{current.reward} теней
+            </span>
+          </span>
+        </button>
       </div>
     </div>
   );
