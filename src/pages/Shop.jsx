@@ -1,14 +1,33 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { useEffect, useState } from "react";
+import {
+  faGem,
+  faUserAstronaut,
+  faFaceGrinStars,
+  faHatCowboy,
+  faWandMagicSparkles,
+  faTicket,
+  faPlus,
+  faRightLeft,
+  faCheck,
+  faSun,
+  faMoon,
+  faGift,
+  faCrown
+} from "@fortawesome/free-solid-svg-icons";
+import { useEffect, useMemo, useState } from "react";
 import roles from "../data/roles";
 import { EMOJIS, DECORATIONS, ADMIN_DECORATION } from "../data/shopData";
 import { CHESTS, RARITIES, RARITY_ORDER, ROLE_RARITY, BASE_ROLES, roleChance } from "../data/chests";
 import { openChest } from "../services/chests";
 import ChestSVG from "../components/shop/ChestSVG";
 import ChestOpening from "../components/shop/ChestOpening";
+import TopUpModal from "../components/shop/TopUpModal";
+import TeniExchangeModal from "../components/shop/TeniExchangeModal";
 import AnimatedEmoji from "../components/AnimatedEmoji";
+import Avatar from "../components/ui/Avatar";
 import { AVATARS } from "../data/avatars";
 import { canUseAvatar, getSelectedAvatar, setSelectedAvatar } from "../services/profile";
+import { getMyAccount } from "../services/accounts";
 import { toast } from "../services/toast";
 import {
   getWallet,
@@ -23,24 +42,34 @@ import ABILITIES from "../data/abilities";
 import { getOwnedAbilities, buyAbility } from "../services/abilitiesShop";
 import { getTeniBalance } from "../services/teniWallet";
 import useSeo from '../hooks/useSeo';
+import "../shop.css";
 
 const TABS = [
-  { id: "chests", label: "Сундуки" },
-  { id: "avatars", label: "Аватарки" },
-  { id: "emojis", label: "Эмодзи" },
-  { id: "decor", label: "Украшения" },
-  { id: "abilities", label: "Способности" },
-  { id: "promo", label: "Промокод" }
+  { id: "chests", label: "Сундуки", hint: "Роли и награды", icon: faGem },
+  { id: "avatars", label: "Аватарки", hint: "Ваш образ", icon: faUserAstronaut },
+  { id: "emojis", label: "Эмодзи", hint: "Реакции в лобби", icon: faFaceGrinStars },
+  { id: "decor", label: "Украшения", hint: "Шляпы и короны", icon: faHatCowboy },
+  { id: "abilities", label: "Способности", hint: "Козырь в игре", icon: faWandMagicSparkles },
+  { id: "promo", label: "Промокод", hint: "Подарки", icon: faTicket }
 ];
+
+const Tokens = ({ className = "h-4 w-4" }) => <img src="/tokens.png" alt="" className={`inline object-contain ${className}`} />;
+const Teni = ({ className = "h-4 w-4" }) => <img src="/krital.svg" alt="" className={`inline object-contain ${className}`} />;
 
 export default function Shop() {
   useSeo({ title: 'Магазин', description: 'Сундуки с ролями, эмодзи, украшения и способности для игры Mafia Play.', path: '/shop' });
-  const [tab, setTab] = useState("chests");
+  const [tab, setTab] = useState(() => {
+    const t = new URLSearchParams(window.location.search).get("tab");
+    return TABS.some((x) => x.id === t) ? t : "chests";
+  });
   const [wallet, setWallet] = useState(getWallet());
   const [promoInput, setPromoInput] = useState("");
   const [promoMsg, setPromoMsg] = useState(null);
   const [owned, setOwned] = useState(getOwnedAbilities());
   const [teni, setTeni] = useState(getTeniBalance());
+  const [topUp, setTopUp] = useState(false);
+  const [exchange, setExchange] = useState(false);
+  const account = getMyAccount();
 
   useEffect(() => {
     const refresh = () => setWallet(getWallet());
@@ -61,24 +90,19 @@ export default function Shop() {
     };
   }, []);
 
-  function buyAbilityItem(id) {
-    const res = buyAbility(id);
-    if (!res.success) {
-      alert(res.message);
-      return;
-    }
+  function buyAbilityItem(a) {
+    const res = buyAbility(a.id);
+    if (!res.success) return toast({ kind: "error", text: res.message });
     setOwned(getOwnedAbilities());
     setTeni(getTeniBalance());
+    toast({ kind: "success", title: `${a.name}: +1`, text: "Способность добавлена в ваш набор" });
   }
 
-  function buy(kind, id, price) {
+  function buy(kind, id, price, label) {
     const res = purchase({ kind, id, price });
-    if (!res.success) {
-      alert(res.message);
-      return;
-    }
-    // Сразу обновляем UI: замок → «Куплено», баланс
+    if (!res.success) return toast({ kind: "error", text: res.message });
     setWallet(getWallet());
+    toast({ kind: "success", title: "Покупка совершена", text: label || undefined });
   }
 
   function submitPromo(e) {
@@ -88,207 +112,297 @@ export default function Shop() {
     if (res.success) setPromoInput("");
   }
 
-  const decorationList = wallet.isAdmin
-    ? [...DECORATIONS, ADMIN_DECORATION]
-    : DECORATIONS;
+  const decorationList = wallet.isAdmin ? [...DECORATIONS, ADMIN_DECORATION] : DECORATIONS;
 
   return (
-    <div className="max-w-6xl mx-auto py-6 space-y-8">
-      <div className="text-center">
-        <h1 className="text-3xl sm:text-4xl font-black text-[#d4af37] uppercase tracking-wider">
-          Магазин
-        </h1>
-        <p className="text-[#c5a059] mt-2">
-          Баланс:{" "}
-          <span className="text-[#f3e5ab] font-bold">
-            {wallet.balance.toLocaleString("ru-RU")}{" "}<img src="/tokens.png" alt="" className="inline h-5 w-5 object-contain align-[-2px] ml-0.5" />
-          </span>
-        </p>
-      </div>
+    <div className="mx-auto max-w-6xl space-y-7 py-6">
+      {/* Шапка: чёрный рынок и кошелёк */}
+      <section className="shop-hero anim-fade-up">
+        <div className="shop-hero__glow" />
+        <div className="shop-hero__smoke" />
+        <div className="relative grid items-center gap-6 lg:grid-cols-[1.2fr_1fr]">
+          <div className="text-center lg:text-left">
+            <p className="text-[11px] font-bold uppercase tracking-[0.35em] text-[#a8916c]">Чёрный рынок семьи</p>
+            <h1 className="ach-title mt-1 font-display text-5xl font-black sm:text-6xl">Магазин</h1>
+            <p className="mt-3 max-w-md text-sm text-[#c9b48f] lg:max-w-none">
+              Сундуки с редкими ролями, аватарки, украшения и способности, которые переворачивают игру.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="shop-wallet">
+              <span className="shop-wallet__label">Токены</span>
+              <span className="shop-wallet__value">
+                <Tokens className="h-7 w-7" />
+                {wallet.balance.toLocaleString("ru-RU")}
+              </span>
+              <button type="button" onClick={() => setTopUp(true)} className="btn btn-gold btn-sm w-full">
+                <FontAwesomeIcon icon={faPlus} /> Пополнить
+              </button>
+            </div>
+            <div className="shop-wallet shop-wallet--teni">
+              <span className="shop-wallet__label">Тени</span>
+              <span className="shop-wallet__value">
+                <Teni className="h-7 w-7" />
+                {teni.toLocaleString("ru-RU")}
+              </span>
+              <button type="button" onClick={() => setExchange(true)} className="btn btn-ghost btn-sm w-full">
+                <FontAwesomeIcon icon={faRightLeft} /> Обменять
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
 
-      <div className="flex flex-wrap justify-center gap-2">
+      {/* Вкладки */}
+      <nav className="shop-tabs" aria-label="Разделы магазина">
         {TABS.map((t) => (
           <button
             key={t.id}
+            type="button"
             onClick={() => setTab(t.id)}
-            className={`rounded-xl border px-4 py-2 text-sm font-bold uppercase tracking-wider transition ${
-              tab === t.id
-                ? "border-[#d4af37] bg-[#8b0000] text-[#f3e5ab]"
-                : "border-[#c5a059]/40 bg-[#120a07] text-[#c5a059] hover:border-[#d4af37]"
-            }`}
+            className={`shop-tab ${tab === t.id ? "shop-tab--active" : ""}`}
+            aria-pressed={tab === t.id}
           >
-            {t.label}
+            <span className="shop-tab__icon">
+              <FontAwesomeIcon icon={t.icon} />
+            </span>
+            <span className="text-left leading-tight">
+              <span className="block text-sm font-black">{t.label}</span>
+              <span className="block text-[10px] opacity-70">{t.hint}</span>
+            </span>
           </button>
         ))}
+      </nav>
+
+      <div key={tab} className="anim-fade-in">
+        {tab === "chests" && <ChestsTab wallet={wallet} />}
+        {tab === "avatars" && <AvatarsTab wallet={wallet} onBuy={(a) => buy("avatar", a.id, a.price, a.name)} />}
+        {tab === "emojis" && <EmojisTab wallet={wallet} onBuy={(e) => buy("emoji", e.id, e.price, `Эмодзи ${e.symbol}`)} />}
+        {tab === "decor" && (
+          <DecorTab
+            wallet={wallet}
+            list={decorationList}
+            avatar={getSelectedAvatar()}
+            name={account?.name}
+            onBuy={(d) => buy("decoration", d.id, d.price, d.name)}
+          />
+        )}
+        {tab === "abilities" && <AbilitiesTab owned={owned} teni={teni} onBuy={buyAbilityItem} />}
+        {tab === "promo" && (
+          <form onSubmit={submitPromo} className="promo-ticket mx-auto max-w-lg anim-scale-in">
+            <div className="promo-ticket__stub">
+              <FontAwesomeIcon icon={faGift} className="text-3xl" />
+            </div>
+            <div className="flex-1 space-y-3 p-5 text-center">
+              <h2 className="font-display text-2xl font-black text-[#f3e5ab]">Промокод</h2>
+              <p className="text-xs text-[#a8916c]">Введите код из наших соцсетей или от администрации. Каждый код срабатывает один раз.</p>
+              <input
+                value={promoInput}
+                onChange={(e) => setPromoInput(e.target.value)}
+                placeholder="MAFIA-XXXX"
+                className="input-noir text-center font-mono text-lg uppercase tracking-[0.3em]"
+              />
+              <button type="submit" disabled={!promoInput.trim()} className="btn btn-blood w-full">
+                Активировать
+              </button>
+              {promoMsg && <p className={`text-sm ${promoMsg.success ? "text-emerald-400" : "text-red-400"}`}>{promoMsg.message}</p>}
+            </div>
+          </form>
+        )}
       </div>
 
-      {tab === "chests" && <ChestsTab wallet={wallet} />}
-      {tab === "avatars" && <AvatarsTab wallet={wallet} onBuy={(a) => buy("avatar", a.id, a.price)} />}
-
-      {tab === "emojis" && (
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-4">
-          {EMOJIS.map((emoji) => {
-            const owned =
-              wallet.ownedEmojis?.includes(emoji.id) || ownsEmoji(emoji.id);
-            return (
-              <div
-                key={emoji.id}
-                className="rounded-xl border border-[#c5a059]/40 bg-[#120a07] p-4 text-center space-y-2"
-              >
-                <div className="text-4xl"><AnimatedEmoji id={emoji.id} symbol={emoji.symbol} /></div>
-                {owned ? (
-                  <span className="text-xs text-emerald-400 uppercase tracking-wider">
-                    Куплено
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => buy("emoji", emoji.id, emoji.price)}
-                    className="w-full rounded-lg bg-[#d4af37] text-black font-bold py-1 text-xs hover:brightness-110"
-                  >
-                    {emoji.price}{" "}<img src="/tokens.png" alt="" className="inline h-4 w-4 object-contain align-[-2px]" />
-                  </button>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {tab === "decor" && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-          {decorationList.map((d) => {
-            const owned =
-              wallet.ownedDecorations?.includes(d.id) ||
-              ownsDecoration(d.id) ||
-              d.price == null;
-            const equipped = wallet.equippedDecoration === d.id;
-            return (
-              <div
-                key={d.id}
-                className="rounded-xl border border-[#c5a059]/40 bg-[#120a07] p-3 text-center space-y-2"
-              >
-                <DecorationSVG
-                  kind={d.kind}
-                  colors={d.colors}
-                  className="h-16 w-full"
-                />
-                <p className="text-xs text-[#e6d5bc]">{d.name}</p>
-                {owned ? (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setEquippedDecoration(equipped ? null : d.id)
-                    }
-                    className={`w-full rounded-lg py-1 text-xs font-bold ${
-                      equipped
-                        ? "bg-emerald-700 text-white"
-                        : "bg-[#d4af37] text-black hover:brightness-110"
-                    }`}
-                  >
-                    {equipped ? "Надето" : "Надеть"}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => buy("decoration", d.id, d.price)}
-                    className="w-full rounded-lg bg-[#d4af37] text-black font-bold py-1 text-xs hover:brightness-110"
-                  >
-                    {d.price}{" "}<img src="/tokens.png" alt="" className="inline h-4 w-4 object-contain align-[-2px]" />
-                  </button>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {tab === "abilities" && (
-        <div>
-          <p className="text-center text-[#c5a059] mb-5">
-            Баланс:{" "}
-            <span className="text-[#f3e5ab] font-bold">
-              {teni}{" "}
-              <img src="/krital.svg" alt="" className="inline h-5 w-5 object-contain align-[-2px] ml-0.5" />
-            </span>
-          </p>
-          <p className="mx-auto mb-6 max-w-2xl rounded-xl border border-[#d4af37]/25 bg-black/30 px-4 py-3 text-center text-sm text-[#e6d5bc]">
-            Купленные способности появляются у вас в игре, если мэр их разрешил. За одну игру можно использовать
-            <b className="text-[#f3d27a]"> только одну способность</b> — дневную на голосовании или ночную ночью. Использованный заряд списывается.
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
-            {ABILITIES.map((a) => (
-              <div
-                key={a.id}
-                className="rounded-xl border border-[#c5a059]/40 bg-[#120a07] p-4 flex flex-col gap-2"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-2 text-sm font-bold text-[#f3e5ab]">
-                    <span className="ability-option__icon !h-8 !w-8 !text-sm"><FontAwesomeIcon icon={a.icon} /></span>
-                    {a.name}
-                  </span>
-                  <span
-                    className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${
-                      a.type === "day"
-                        ? "border-amber-500/50 text-amber-300"
-                        : "border-indigo-500/50 text-indigo-300"
-                    }`}
-                  >
-                    {a.type === "day" ? "День" : "Ночь"}
-                  </span>
-                </div>
-                <p className="text-xs text-[#8b6b12] leading-snug flex-1">{a.description}</p>
-                <div className="flex items-center justify-between mt-1">
-                  <span className="text-[11px] text-[#c5a059]">
-                    В запасе: <strong className="text-[#f3e5ab]">{owned[a.id] || 0}</strong>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => buyAbilityItem(a.id)}
-                    disabled={teni < a.price}
-                    className="rounded-lg bg-gradient-to-r from-[#8b0000] to-[#5c0000] px-3 py-1.5 text-xs font-bold text-[#f3e5ab] border border-[#d4af37]/60 disabled:opacity-40"
-                  >
-                    {a.price} <img src="/krital.svg" alt="" className="inline h-4 w-4 align-[-2px]" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {tab === "promo" && (
-        <form
-          onSubmit={submitPromo}
-          className="max-w-md mx-auto space-y-4 text-center"
-        >
-          <p className="text-[#c5a059]">
-            Введите промокод — сработает один раз на это устройство.
-          </p>
-          <input
-            value={promoInput}
-            onChange={(e) => setPromoInput(e.target.value)}
-            placeholder="Промокод"
-            className="w-full rounded-xl border border-[#c5a059]/40 bg-[#120a07] px-4 py-3 text-center text-[#f3e5ab] tracking-widest uppercase focus:border-[#d4af37] outline-none"
-          />
-          <button
-            type="submit"
-            className="w-full rounded-xl bg-gradient-to-r from-[#8b0000] to-[#5c0000] px-6 py-3 font-bold text-[#f3e5ab] border border-[#d4af37]"
-          >
-            Активировать
-          </button>
-          {promoMsg && (
-            <p
-              className={
-                promoMsg.success ? "text-emerald-400" : "text-red-400"
-              }
-            >
-              {promoMsg.message}
-            </p>
-          )}
-        </form>
-      )}
+      {topUp && <TopUpModal onClose={() => setTopUp(false)} playerName={account?.name} accountId={account?.id} />}
+      {exchange && <TeniExchangeModal onClose={() => setExchange(false)} />}
     </div>
+  );
+}
+
+function SectionHead({ title, text, right }) {
+  return (
+    <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <h2 className="font-display text-2xl font-black text-[#f3e5ab] sm:text-3xl">{title}</h2>
+        {text && <p className="mt-1 max-w-2xl text-sm text-[#a8916c]">{text}</p>}
+      </div>
+      {right}
+    </div>
+  );
+}
+
+function PriceButton({ price, currency = "tokens", disabled, onClick, children }) {
+  return (
+    <button type="button" disabled={disabled} onClick={onClick} className="shop-price">
+      {children || (
+        <>
+          {price.toLocaleString("ru-RU")} {currency === "teni" ? <Teni /> : <Tokens />}
+        </>
+      )}
+    </button>
+  );
+}
+
+function EmojisTab({ wallet, onBuy }) {
+  const list = [...EMOJIS].sort((a, b) => a.price - b.price);
+  const ownedCount = list.filter((e) => wallet.ownedEmojis?.includes(e.id) || ownsEmoji(e.id)).length;
+  return (
+    <section>
+      <SectionHead
+        title="Эмодзи"
+        text="Живые реакции для лобби и голосования. Купленные эмодзи появляются в кнопке со смайликом."
+        right={<span className="chip">Ваших: {ownedCount} / {list.length}</span>}
+      />
+      <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6">
+        {list.map((emoji, i) => {
+          const owned = wallet.ownedEmojis?.includes(emoji.id) || ownsEmoji(emoji.id);
+          const legendary = emoji.price >= 500;
+          return (
+            <div
+              key={emoji.id}
+              className={`shop-item anim-scale-in ${owned ? "shop-item--owned" : ""} ${legendary ? "shop-item--legend" : ""}`}
+              style={{ "--i": Math.min(i, 14) }}
+            >
+              {legendary && <span className="shop-ribbon">Легенда</span>}
+              <div className="shop-item__stage">
+                <span className="text-5xl">
+                  <AnimatedEmoji id={emoji.id} symbol={emoji.symbol} />
+                </span>
+              </div>
+              {owned ? (
+                <span className="shop-owned">
+                  <FontAwesomeIcon icon={faCheck} /> Ваше
+                </span>
+              ) : (
+                <PriceButton price={emoji.price} disabled={wallet.balance < emoji.price} onClick={() => onBuy(emoji)} />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function DecorTab({ wallet, list, avatar, name, onBuy }) {
+  const kinds = useMemo(() => {
+    const map = new Map();
+    list.forEach((d) => {
+      if (!map.has(d.kind)) map.set(d.kind, []);
+      map.get(d.kind).push(d);
+    });
+    return [...map.values()];
+  }, [list]);
+  const isOwned = (d) => wallet.ownedDecorations?.includes(d.id) || ownsDecoration(d.id) || d.price == null;
+  const [pick, setPick] = useState({});
+
+  return (
+    <section>
+      <SectionHead
+        title="Украшения"
+        text="Надеваются поверх аватарки — их видят все за столом. Выберите вид и цвет камней."
+      />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {kinds.map((variants, i) => {
+          const equippedVariant = variants.find((v) => v.id === wallet.equippedDecoration);
+          const current = variants.find((v) => v.id === pick[variants[0].kind]) || equippedVariant || variants[0];
+          const owned = isOwned(current);
+          const equipped = wallet.equippedDecoration === current.id;
+          const baseName = current.name.replace(/\s*\(.*\)$/, "");
+          const colorName = (current.name.match(/\((.*)\)$/) || [])[1];
+          return (
+            <div key={current.kind} className="shop-decor anim-scale-in" style={{ "--i": i, "--gem": current.colors.main }}>
+              <div className="shop-decor__stage">
+                <div className="relative mt-6">
+                  <div className="pointer-events-none absolute -top-9 left-1/2 z-10 -translate-x-1/2 drop-shadow-[0_4px_10px_rgba(0,0,0,0.8)]">
+                    <DecorationSVG kind={current.kind} colors={current.colors} className="h-16 w-24" />
+                  </div>
+                  <Avatar src={avatar} size={88} />
+                </div>
+                {equipped && <span className="shop-owned absolute right-3 top-3 !text-[10px]">Надето</span>}
+              </div>
+              <div className="p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <h3 className="truncate font-display text-lg font-black text-[#f3e5ab]">{baseName}</h3>
+                    <p className="text-[11px] text-[#a8916c]">{colorName || (name ? `для ${name}` : "")}</p>
+                  </div>
+                  {current.price == null && (
+                    <span className="chip !text-[9px]">
+                      <FontAwesomeIcon icon={faCrown} className="mr-1" /> Админ
+                    </span>
+                  )}
+                </div>
+                {variants.length > 1 && (
+                  <div className="mt-3 flex gap-2">
+                    {variants.map((v) => (
+                      <button
+                        key={v.id}
+                        type="button"
+                        title={v.name}
+                        onClick={() => setPick((p) => ({ ...p, [v.kind]: v.id }))}
+                        className={`shop-swatch ${v.id === current.id ? "shop-swatch--active" : ""}`}
+                        style={{ "--c1": v.colors.main, "--c2": v.colors.dark || v.colors.main }}
+                      >
+                        {isOwned(v) && <FontAwesomeIcon icon={faCheck} className="text-[9px] text-white drop-shadow" />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div className="mt-4">
+                  {owned ? (
+                    <button
+                      type="button"
+                      onClick={() => setEquippedDecoration(equipped ? null : current.id)}
+                      className={`btn btn-sm w-full ${equipped ? "btn-ghost" : "btn-gold"}`}
+                    >
+                      {equipped ? "Снять" : "Надеть"}
+                    </button>
+                  ) : (
+                    <PriceButton price={current.price} disabled={wallet.balance < current.price} onClick={() => onBuy(current)} />
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function AbilitiesTab({ owned, teni, onBuy }) {
+  return (
+    <section>
+      <SectionHead
+        title="Способности"
+        text="Покупаются за тени. В игре вы увидите только свои способности — и сможете использовать одну за всю игру: дневную на голосовании или ночную ночью."
+        right={
+          <span className="chip">
+            <Teni className="mr-1 h-3.5 w-3.5" /> {teni} теней
+          </span>
+        }
+      />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {ABILITIES.map((a, i) => {
+          const count = owned[a.id] || 0;
+          return (
+            <div key={a.id} className={`ability-card ability-card--${a.type} anim-scale-in`} style={{ "--i": i }}>
+              <span className="ability-card__type">
+                <FontAwesomeIcon icon={a.type === "day" ? faSun : faMoon} /> {a.type === "day" ? "День" : "Ночь"}
+              </span>
+              {count > 0 && <span className="ability-card__count">×{count}</span>}
+              <div className="ability-card__medal">
+                <FontAwesomeIcon icon={a.icon} />
+              </div>
+              <h3 className="mt-4 font-display text-xl font-black text-[#f3e5ab]">{a.name}</h3>
+              <p className="mt-1.5 flex-1 text-xs leading-relaxed text-[#c9b48f]">{a.description}</p>
+              <div className="mt-4 w-full">
+                <PriceButton price={a.price} currency="teni" disabled={teni < a.price} onClick={() => onBuy(a)} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -367,14 +481,16 @@ function ChestsTab({ wallet }) {
 
   return (
     <div className="space-y-10">
-      <p className="mx-auto max-w-2xl text-center text-sm text-[#c9b48f]">
-        Роли больше не продаются — они выпадают из сундуков вместе с Токенами, Тенями и эмодзи. Чем дороже сундук,
-        тем выше шанс на редкие роли.
-      </p>
+      <div>
+        <SectionHead
+          title="Сундуки"
+          text="Роли выпадают из сундуков вместе с Токенами, Тенями и эмодзи. Чем дороже сундук — тем выше шанс на редкие роли. Повторная роль превращается в 500 Токенов."
+        />
       <div className="grid gap-5 md:grid-cols-3">
         {CHESTS.map((c, i) => (
           <ChestCard key={c.id} chest={c} i={i} balance={wallet.balance} onOpen={open} />
         ))}
+      </div>
       </div>
 
       <section>

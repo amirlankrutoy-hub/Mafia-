@@ -1,0 +1,357 @@
+/* ============================================================
+   Магазин
+   ============================================================ */
+.shop-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 28px;
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  background:
+    radial-gradient(90% 120% at 100% 0%, rgba(192, 21, 31, 0.28), transparent 55%),
+    radial-gradient(80% 120% at 0% 100%, rgba(212, 175, 55, 0.16), transparent 60%),
+    linear-gradient(160deg, #1c0f0a, #0b0605 70%);
+  padding: 1.75rem 1.5rem;
+  box-shadow: 0 30px 80px -40px rgba(212, 175, 55, 0.5), inset 0 1px 0 rgba(255, 233, 168, 0.08);
+}
+.shop-hero__glow {
+  position: absolute;
+  right: -80px;
+  top: -80px;
+  width: 340px;
+  height: 340px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 196, 70, 0.3), transparent 65%);
+  filter: blur(8px);
+  animation: achGlow 5s ease-in-out infinite;
+}
+.shop-hero__smoke {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(115deg, transparent 0 40px, rgba(255, 255, 255, 0.015) 40px 41px);
+  pointer-events: none;
+}
+.shop-wallet {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  border-radius: 20px;
+  border: 1px solid rgba(243, 210, 122, 0.35);
+  background: linear-gradient(160deg, rgba(58, 40, 8, 0.75), rgba(16, 10, 5, 0.9));
+  padding: 0.9rem;
+  box-shadow: 0 16px 40px -22px rgba(243, 210, 122, 0.7), inset 0 1px 0 rgba(255, 241, 184, 0.15);
+}
+.shop-wallet--teni {
+  border-color: rgba(168, 120, 255, 0.35);
+  background: linear-gradient(160deg, rgba(48, 22, 82, 0.7), rgba(12, 8, 18, 0.9));
+  box-shadow: 0 16px 40px -22px rgba(168, 120, 255, 0.7), inset 0 1px 0 rgba(230, 210, 255, 0.12);
+}
+.shop-wallet__label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: #a8916c;
+}
+.shop-wallet--teni .shop-wallet__label { color: #b9a3e0; }
+.shop-wallet__value {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  font-weight: 900;
+  color: #fff1c4;
+  line-height: 1;
+}
+
+/* Вкладки */
+.shop-tabs {
+  display: flex;
+  gap: 0.6rem;
+  overflow-x: auto;
+  padding: 0.25rem 0.1rem 0.6rem;
+  scrollbar-width: none;
+}
+.shop-tabs::-webkit-scrollbar { display: none; }
+.shop-tab {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.6rem;
+  border-radius: 18px;
+  border: 1px solid rgba(212, 175, 55, 0.2);
+  background: rgba(14, 9, 6, 0.85);
+  padding: 0.55rem 1rem 0.55rem 0.55rem;
+  color: #c5b08a;
+  transition: all 0.3s var(--ease-out);
+}
+.shop-tab:hover { border-color: rgba(243, 210, 122, 0.55); color: #f3e5ab; transform: translateY(-2px); }
+.shop-tab__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: rgba(212, 175, 55, 0.1);
+  color: #d4af37;
+  transition: all 0.3s;
+}
+.shop-tab--active {
+  border-color: transparent;
+  background: linear-gradient(135deg, #fff1b8, #f3d27a 45%, #c9971c);
+  color: #1a1004;
+  box-shadow: 0 10px 30px -10px rgba(243, 210, 122, 0.8);
+}
+.shop-tab--active:hover { color: #1a1004; }
+.shop-tab--active .shop-tab__icon { background: #1a1004; color: #f3d27a; }
+
+/* Кнопка цены */
+.shop-price {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 241, 184, 0.6);
+  background: linear-gradient(135deg, #fff1b8, #f3d27a 45%, #c9971c);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 900;
+  color: #1a1004;
+  box-shadow: 0 8px 20px -10px rgba(243, 210, 122, 0.9);
+  transition: transform 0.2s var(--ease-spring), filter 0.2s;
+}
+.shop-price:not(:disabled):hover { transform: translateY(-2px); filter: brightness(1.08); }
+.shop-price:disabled {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: #7d6d55;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+.shop-owned {
+  display: inline-flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border-radius: 12px;
+  border: 1px solid rgba(16, 185, 129, 0.45);
+  background: rgba(16, 185, 129, 0.12);
+  padding: 0.45rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 900;
+  color: #6ee7b7;
+}
+.shop-owned.absolute { width: auto; }
+
+/* Эмодзи */
+.shop-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid rgba(212, 175, 55, 0.18);
+  background: linear-gradient(170deg, #1a110b, #0b0705);
+  padding: 0.75rem;
+  transition: transform 0.3s var(--ease-spring), border-color 0.3s, box-shadow 0.3s;
+}
+.shop-item:hover { transform: translateY(-4px); border-color: rgba(243, 210, 122, 0.5); box-shadow: 0 16px 34px -18px rgba(243, 210, 122, 0.6); }
+.shop-item--owned { border-color: rgba(16, 185, 129, 0.3); }
+.shop-item--legend {
+  border-color: rgba(243, 210, 122, 0.7);
+  background:
+    radial-gradient(100% 70% at 50% 0%, rgba(255, 210, 90, 0.25), transparent 70%),
+    linear-gradient(170deg, #2a1c08, #0b0705);
+  box-shadow: 0 0 30px -10px rgba(255, 210, 90, 0.7);
+}
+.shop-item__stage {
+  position: relative;
+  display: flex;
+  width: 100%;
+  aspect-ratio: 1;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  background: radial-gradient(circle at 50% 60%, rgba(243, 210, 122, 0.16), transparent 65%);
+}
+.shop-item__stage::after {
+  content: "";
+  position: absolute;
+  bottom: 12%;
+  left: 22%;
+  right: 22%;
+  height: 10px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(0, 0, 0, 0.7), transparent 70%);
+}
+.shop-ribbon {
+  position: absolute;
+  top: 10px;
+  right: -28px;
+  z-index: 2;
+  width: 110px;
+  transform: rotate(40deg);
+  background: linear-gradient(90deg, #c9971c, #fff1b8, #c9971c);
+  padding: 2px 0;
+  text-align: center;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: #2a1a02;
+}
+
+/* Украшения */
+.shop-decor {
+  overflow: hidden;
+  border-radius: 22px;
+  border: 1px solid rgba(212, 175, 55, 0.22);
+  background: linear-gradient(170deg, #1a110b, #0b0705);
+  transition: transform 0.3s var(--ease-spring), box-shadow 0.3s, border-color 0.3s;
+}
+.shop-decor:hover { transform: translateY(-4px); border-color: rgba(243, 210, 122, 0.5); box-shadow: 0 20px 40px -24px var(--gem); }
+.shop-decor__stage {
+  position: relative;
+  display: flex;
+  height: 170px;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(60% 70% at 50% 55%, color-mix(in srgb, var(--gem) 35%, transparent), transparent 70%),
+    linear-gradient(180deg, #120b07, #1a120a);
+  border-bottom: 1px solid rgba(212, 175, 55, 0.12);
+}
+.shop-swatch {
+  display: flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  background: radial-gradient(circle at 35% 30%, #fff, var(--c1) 45%, var(--c2));
+  transition: transform 0.2s var(--ease-spring), border-color 0.2s, box-shadow 0.2s;
+}
+.shop-swatch:hover { transform: scale(1.12); }
+.shop-swatch--active { border-color: #fff1b8; box-shadow: 0 0 12px var(--c1); transform: scale(1.12); }
+
+/* Способности */
+.ability-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow: hidden;
+  border-radius: 22px;
+  padding: 2.4rem 1.1rem 1.1rem;
+  text-align: center;
+  transition: transform 0.3s var(--ease-spring), box-shadow 0.3s;
+}
+.ability-card:hover { transform: translateY(-5px) rotate(-0.5deg); }
+.ability-card--day {
+  border: 1px solid rgba(243, 210, 122, 0.4);
+  background:
+    radial-gradient(90% 60% at 50% 0%, rgba(255, 196, 70, 0.28), transparent 70%),
+    linear-gradient(175deg, #2a1a08, #0e0805);
+  box-shadow: 0 18px 40px -24px rgba(255, 196, 70, 0.8);
+}
+.ability-card--night {
+  border: 1px solid rgba(140, 150, 255, 0.35);
+  background:
+    radial-gradient(90% 60% at 50% 0%, rgba(110, 120, 255, 0.25), transparent 70%),
+    linear-gradient(175deg, #141436, #07060f);
+  box-shadow: 0 18px 40px -24px rgba(120, 130, 255, 0.8);
+}
+.ability-card__type {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.ability-card--day .ability-card__type { background: rgba(255, 196, 70, 0.15); color: #ffd982; }
+.ability-card--night .ability-card__type { background: rgba(130, 140, 255, 0.15); color: #b8bfff; }
+.ability-card__count {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #34d399, #059669);
+  padding: 0.15rem 0.6rem;
+  font-size: 11px;
+  font-weight: 900;
+  color: #fff;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.6);
+}
+.ability-card__medal {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  font-size: 1.9rem;
+  transition: transform 0.5s var(--ease-spring);
+}
+.ability-card:hover .ability-card__medal { transform: rotate(-10deg) scale(1.08); }
+.ability-card--day .ability-card__medal {
+  border: 3px solid #fff1b8;
+  background: radial-gradient(circle at 35% 30%, #fff8dc, #f3d27a 40%, #b8860b 85%);
+  color: #3a2603;
+  box-shadow: 0 0 28px rgba(255, 210, 90, 0.7);
+}
+.ability-card--night .ability-card__medal {
+  border: 3px solid #dfe2ff;
+  background: radial-gradient(circle at 35% 30%, #eef0ff, #8d95ff 45%, #2e2a8a 90%);
+  color: #10103a;
+  box-shadow: 0 0 28px rgba(130, 140, 255, 0.7);
+}
+
+/* Промокод — билет */
+.promo-ticket {
+  display: flex;
+  overflow: hidden;
+  border-radius: 22px;
+  border: 1px solid rgba(243, 210, 122, 0.4);
+  background:
+    radial-gradient(80% 100% at 100% 0%, rgba(192, 21, 31, 0.2), transparent 60%),
+    linear-gradient(160deg, #1d130b, #0b0705);
+  box-shadow: 0 24px 60px -30px rgba(243, 210, 122, 0.6);
+}
+.promo-ticket__stub {
+  position: relative;
+  display: flex;
+  width: 84px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-right: 2px dashed rgba(243, 210, 122, 0.35);
+  background: linear-gradient(180deg, #c0151f, #5c0000);
+  color: #ffe9a8;
+}
+.promo-ticket__stub::before,
+.promo-ticket__stub::after {
+  content: "";
+  position: absolute;
+  right: -11px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #0a0605;
+}
+.promo-ticket__stub::before { top: -10px; }
+.promo-ticket__stub::after { bottom: -10px; }
