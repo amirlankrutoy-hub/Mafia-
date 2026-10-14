@@ -34,7 +34,7 @@ export function openChest(chestId) {
   let type = pickWeighted(chest.drops);
 
   if (type === "emoji") {
-    const free = EMOJIS.filter((e) => !wallet.ownedEmojis.includes(e.id));
+    const free = EMOJIS.filter((e) => !e.event && !wallet.ownedEmojis.includes(e.id));
     if (!free.length) type = "tokens"; // все эмодзи уже есть
     else {
       const emoji = free[Math.floor(Math.random() * free.length)];

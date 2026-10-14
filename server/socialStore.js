@@ -31,6 +31,9 @@ const EMPTY = () => ({
   bans: {},
   disabledRoles: {},
   adminTokens: {},
+  adminLog: [], // журнал входов в админ-панель
+  adminPassword: {}, // { salt, hash } — пароль, сменённый из панели (иначе ADMIN_PASSWORD)
+  pendingGrants: {}, // accountId -> [выдачи админа, ждущие входа игрока]
   orders: {}, // заказы Токенов за звёзды Telegram
   pendingTopups: {}, // accountId -> [{ orderId, amount }] — ещё не доставлены на сайт
   supports: {}, // accountId -> { at, granted } — саппорты, назначенные админом

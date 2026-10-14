@@ -59,6 +59,13 @@ export function creditTeni(amount) {
 }
 
 /** Списание для обмена теней на Мафио (используется следующим блоком) */
+/** Изменить баланс теней на delta (админ), не ниже 0 */
+export function adjustTeni(delta) {
+  const next = Math.max(0, readBalance() + Math.trunc(Number(delta) || 0));
+  writeBalance(next);
+  return next;
+}
+
 export function debitTeni(amount) {
   const value = Math.max(0, Math.floor(Number(amount)) || 0);
   const current = readBalance();

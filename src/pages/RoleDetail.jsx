@@ -97,8 +97,8 @@ function RoleDetail() {
             </div>
 
             {!owned && (
-              <Link to="/shop?tab=chests" className="btn btn-gold">
-                Выбить из сундука <FontAwesomeIcon icon={faArrowRight} />
+              <Link to={role.event ? "/event" : "/shop?tab=chests"} className="btn btn-gold">
+                {role.event ? "Выиграть в «Суде Мафий»" : "Выбить из сундука"} <FontAwesomeIcon icon={faArrowRight} />
               </Link>
             )}
           </div>

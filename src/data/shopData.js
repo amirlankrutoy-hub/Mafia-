@@ -47,6 +47,12 @@ export const EMOJIS = [
   { id: "e_100", symbol: "💯", price: 50 },
   { id: "e_shush", symbol: "🤫", price: 60 },
   { id: "e_lock", symbol: "🔒", price: 60 },
+  // Тематика «Суд Мафий» — только из колеса события
+  { id: "e_scales", symbol: "⚖️", price: 0, event: true },
+  { id: "e_gavel", symbol: "🔨", price: 0, event: true },
+  { id: "e_judge", symbol: "🧑‍⚖️", price: 0, event: true },
+  { id: "e_chains", symbol: "⛓️", price: 0, event: true },
+  { id: "e_scroll", symbol: "📜", price: 0, event: true },
   { id: "e_candle", symbol: "🕯️", price: 70 },
   { id: "e_bomb", symbol: "💣", price: 90 },
   { id: "e_handcuffs", symbol: "⛓️", price: 90 },

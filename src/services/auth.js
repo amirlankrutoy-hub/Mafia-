@@ -17,6 +17,7 @@ const SYNC_PREFIXES = [
   "mafia_recent_emojis_v1",
   "mafia_topups_done_v1",
   "mafia_settings_v1",
+  "mafia_event_court_v1",
   "mafia_language",
   "mafia_menu_muted",
   "mafia_lobby_muted"

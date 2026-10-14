@@ -20,7 +20,8 @@ import {
   VoteResult,
   Ended,
   WaitingReady,
-  Stage
+  Stage,
+  SoloTimer
 } from "./screens";
 
 // Награда за победу (Токены)
@@ -37,7 +38,7 @@ function emitAck(event, ...args) {
   });
 }
 
-export default function GameRoom({ roomCode, isMayor, players: initialPlayers, myRole, team, resume, onLeaveToLobby }) {
+export default function GameRoom({ roomCode, isMayor, solo = false, players: initialPlayers, myRole, team, resume, onLeaveToLobby }) {
   const initial = resume?.phase || null;
   const [phaseData, setPhaseData] = useState(initial || { phase: "waiting_ready" });
   const [players, setPlayers] = useState(resume?.players || initialPlayers || []);
@@ -51,6 +52,8 @@ export default function GameRoom({ roomCode, isMayor, players: initialPlayers, m
   const [voteProgress, setVoteProgress] = useState(null);
   const [nightProgress, setNightProgress] = useState(null);
   const [mvpShown, setMvpShown] = useState(false);
+  const [judgeUsed, setJudgeUsed] = useState(false);
+  const [judgeBusy, setJudgeBusy] = useState(false);
   const [earned, setEarned] = useState(0);
   const [playAgainState, setPlayAgainState] = useState("idle");
   const rewardGiven = useRef(false);
@@ -228,7 +231,7 @@ export default function GameRoom({ roomCode, isMayor, players: initialPlayers, m
   const teammatesAlive = (team || []).filter(
     (m) => m.id !== socket.id && players.some((p) => p.name === m.name && p.alive !== false)
   ).length;
-  if (!isMayor && alive && phase !== "ended" && ["mafia", "otez", "vor"].includes(myRole) && teammatesAlive > 0) {
+  if (!isMayor && alive && phase !== "ended" && ["mafia", "otez", "vor", "advokat"].includes(myRole) && teammatesAlive > 0) {
     chatChannels.push({ id: "mafia", label: "Семья" });
   }
 
@@ -242,7 +245,7 @@ export default function GameRoom({ roomCode, isMayor, players: initialPlayers, m
           players={phaseData.players || players}
           myId={socket.id}
           earned={earned}
-          isMayor={isMayor}
+          isMayor={isMayor || solo}
           mvpShown={mvpShown}
           playAgainState={playAgainState}
           onPlayAgain={playAgain}
@@ -279,6 +282,24 @@ export default function GameRoom({ roomCode, isMayor, players: initialPlayers, m
           candidate={c}
           avatar={players.find((p) => p.id === c?.id)?.avatar}
           isMayor={isMayor}
+          solo={solo}
+          judge={
+            !isMayor && myRole === "sudya" && alive && !judgeUsed && c?.id !== socket.id
+              ? {
+                  busy: judgeBusy,
+                  onCancel: async () => {
+                    setJudgeBusy(true);
+                    const res = await emitAck("judge:cancel", roomCode);
+                    setJudgeBusy(false);
+                    if (res?.success) setJudgeUsed(true);
+                    else {
+                      toast({ kind: "error", text: res?.message || "Не получилось" });
+                      if (/уже/.test(res?.message || "")) setJudgeUsed(true);
+                    }
+                  }
+                }
+              : null
+          }
           onExecute={() => socket.emit("mayor-execute", roomCode, false)}
           onPardon={() => socket.emit("mayor-execute", roomCode, true)}
         />
@@ -345,10 +366,10 @@ export default function GameRoom({ roomCode, isMayor, players: initialPlayers, m
     }
 
     if (phase === "night_end") {
-      return <WaitScreen title="Ночь подходит к концу…" text="Мэр решает, когда наступит утро" />;
+      return <WaitScreen title="Ночь подходит к концу…" text={solo ? "Подводим итоги ночи…" : "Мэр решает, когда наступит утро"} />;
     }
 
-    if (phase === "morning") return <Morning day={phaseData.day} results={phaseData.results || []} />;
+    if (phase === "morning") return <Morning day={phaseData.day} results={phaseData.results || []} autoVoteAt={phaseData.autoVoteAt} />;
 
     return (
       <Stage tone="noir">
@@ -361,6 +382,9 @@ export default function GameRoom({ roomCode, isMayor, players: initialPlayers, m
     <>
       {screen}
       {overlay}
+      {solo && phase === "night" && phaseData.nightInfo?.endsAt && (
+        <SoloTimer endsAt={phaseData.nightInfo.endsAt} label={phaseData.nightInfo.yourTurn ? "На ход" : "Ход"} />
+      )}
       <ChatPanel roomCode={roomCode} channels={chatChannels} className="bottom-20 right-4" />
       {phase === "ended" && !isMayor && (
         <button

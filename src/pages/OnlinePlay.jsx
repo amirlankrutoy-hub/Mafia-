@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCrown, faDoorOpen, faArrowRight, faArrowLeft } from "@fortawesome/free-solid-svg-icons";
+import { faCrown, faDoorOpen, faArrowRight, faArrowLeft, faDice } from "@fortawesome/free-solid-svg-icons";
+import SoloMenu from "../components/solo/SoloMenu";
+import SoloLobby from "../components/solo/SoloLobby";
+import SoloRoleReel from "../components/solo/SoloRoleReel";
+import { soloCreate, soloFind, soloStart, sendOwnedRoles } from "../services/solo";
 
 import Lobby from "../components/Lobby";
 import PartySetup from "../components/PartySetup";
@@ -49,7 +53,10 @@ export default function OnlinePlay({ account }) {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [view, setView] = useState("menu"); // menu | lobby
+  const [view, setView] = useState("menu"); // menu | solo | lobby
+  const [mode, setMode] = useState("mayor"); // mayor | solo (одиночный режим без мэра)
+  const [soloState, setSoloState] = useState(null); // { hostId, countdownEndsAt }
+  const [soloBusy, setSoloBusy] = useState(null);
   const [codeOpen, setCodeOpen] = useState(false);
   const [codeInput, setCodeInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -88,16 +95,24 @@ export default function OnlinePlay({ account }) {
     setMyRole(null);
     setTeam(null);
     setResume(null);
+    setMode("mayor");
+    setSoloState(null);
   }, []);
 
   const enterLobby = useCallback((res, name, avatar, asMayor) => {
+    const solo = res.mode === "solo";
+    setMode(solo ? "solo" : "mayor");
+    if (solo) {
+      setSoloState({ hostId: res.hostId, countdownEndsAt: null });
+      sendOwnedRoles(res.roomCode);
+    }
     setRoomCode(res.roomCode);
     setPlayers(dedupe(res.players));
     setMayor(res.mayor || null);
     setView("lobby");
     localStorage.setItem(
       SESSION_KEY,
-      JSON.stringify({ roomCode: res.roomCode, playerName: name, avatar, isMayor: asMayor })
+      JSON.stringify({ roomCode: res.roomCode, playerName: name, avatar, isMayor: asMayor, mode: solo ? "solo" : "mayor" })
     );
   }, []);
 
@@ -138,6 +153,44 @@ export default function OnlinePlay({ account }) {
     recordEvent("room_created");
   };
 
+  // ---------- Одиночный режим ----------
+  const soloPlayer = () => ({ name: account?.name || "Игрок", avatar: getSelectedAvatar(), accountId: account?.id });
+
+  const handleSoloPlay = async () => {
+    setSoloBusy("play");
+    const p = soloPlayer();
+    const res = await soloFind(p);
+    setSoloBusy(null);
+    if (!res?.success) {
+      toast({
+        kind: "error",
+        title: res?.empty ? "Нет открытых комнат" : "Не удалось войти",
+        text: res?.empty ? "Создайте свою комнату — другие игроки попадут к вам через «Играть»." : res?.message
+      });
+      return;
+    }
+    enterLobby(res, p.name, p.avatar, false);
+    recordEvent("room_joined");
+  };
+
+  const handleSoloCreate = async () => {
+    setSoloBusy("create");
+    const p = soloPlayer();
+    const res = await soloCreate(p);
+    setSoloBusy(null);
+    if (!res?.success) {
+      toast({ kind: "error", title: "Не удалось создать комнату", text: res?.message });
+      return;
+    }
+    enterLobby(res, p.name, p.avatar, false);
+    recordEvent("room_created");
+  };
+
+  const handleSoloStart = async () => {
+    const res = await soloStart(roomCode);
+    if (!res?.success) toast({ kind: "error", text: res?.message || "Не удалось начать" });
+  };
+
   // ?autojoin=CODE — приглашение/ссылка. Ждём аккаунт, потом входим и чистим адрес.
   useEffect(() => {
     if (!account) return;
@@ -170,7 +223,9 @@ export default function OnlinePlay({ account }) {
 
     const onPlayers = (list) => setPlayers(dedupe(list));
     const onMayor = (m) => m && setMayor(m);
-    const onGameReset = ({ players: fresh, mayor: m }) => {
+    const onSoloState = (st) => setSoloState((prev) => ({ ...(prev || {}), ...st }));
+    const onGameReset = ({ players: fresh, mayor: m, solo, hostId }) => {
+      if (solo) setSoloState({ hostId, countdownEndsAt: null });
       setInGame(false);
       setResume(null);
       setPlayers(dedupe(fresh));
@@ -256,7 +311,8 @@ export default function OnlinePlay({ account }) {
       "everyone-ready": onEveryoneReady,
       "mayor-disconnected": onMayorAway,
       "mayor-reconnected": onMayorBack,
-      "game-error": onGameError
+      "game-error": onGameError,
+      "solo-state": onSoloState
     };
     Object.entries(handlers).forEach(([ev, fn]) => socket.on(ev, fn));
     const offKnock = onIncomingFriendRequest((req) => setIncomingRequest(req));
@@ -323,6 +379,7 @@ export default function OnlinePlay({ account }) {
       <GameRoom
         roomCode={roomCode}
         isMayor={isMayor}
+        solo={mode === "solo"}
         players={players}
         myRole={myRole}
         team={team}
@@ -331,6 +388,18 @@ export default function OnlinePlay({ account }) {
         onLeaveToLobby={() => {
           setInGame(false);
           setResume(null);
+        }}
+      />
+    );
+  }
+
+  if (showRoulette && myRole && mode === "solo") {
+    return (
+      <SoloRoleReel
+        role={myRole}
+        onFinish={() => {
+          setShowRoulette(false);
+          setInGame(true);
         }}
       />
     );
@@ -404,6 +473,27 @@ export default function OnlinePlay({ account }) {
                   </span>
                 </button>
               </div>
+              <button
+                type="button"
+                disabled={busy || !account}
+                onClick={() => setView("solo")}
+                className="noir-card noir-card--hover spotlight mode-solo-card group w-full max-w-2xl p-6 text-left anim-fade-up disabled:opacity-60"
+                style={{ "--i": 5 }}
+              >
+                <div className="flex items-center gap-4">
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#818cf8] to-[#3730a3] text-xl text-white shadow-[0_8px_25px_-6px_rgba(99,102,241,0.9)] transition group-hover:scale-110 group-hover:rotate-12">
+                    <FontAwesomeIcon icon={faDice} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className="font-display text-2xl font-bold text-[#e0e7ff]">Одиночный режим</span>
+                      <span className="rounded-full bg-[#6366f1] px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-white">Новый</span>
+                    </span>
+                    <span className="mt-1 block text-sm text-[#a5b4fc]">Без мэра и настроек — случайные роли из вашей коллекции</span>
+                  </span>
+                  <FontAwesomeIcon icon={faArrowRight} className="text-[#a5b4fc] transition group-hover:translate-x-1" />
+                </div>
+              </button>
               {!account && <p className="text-sm text-[#a8916c]">Сначала выберите имя</p>}
             </div>
           </BackgroundVideo>
@@ -437,7 +527,23 @@ export default function OnlinePlay({ account }) {
         </form>
       </Modal>
 
-      {view === "lobby" && (
+      {view === "solo" && (
+        <SoloMenu busy={soloBusy} onPlay={handleSoloPlay} onCreate={handleSoloCreate} onBack={() => setView("menu")} />
+      )}
+
+      {view === "lobby" && mode === "solo" && (
+        <SoloLobby
+          roomCode={roomCode}
+          players={players}
+          hostId={soloState?.hostId}
+          countdownEndsAt={soloState?.countdownEndsAt}
+          onReady={handlePlayerReady}
+          onStart={handleSoloStart}
+          onLeave={leaveLobby}
+        />
+      )}
+
+      {view === "lobby" && mode !== "solo" && (
         <Lobby
           roomCode={roomCode}
           players={players}

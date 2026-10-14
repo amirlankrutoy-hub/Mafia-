@@ -25,7 +25,7 @@ import TopUpModal from "../components/shop/TopUpModal";
 import TeniExchangeModal from "../components/shop/TeniExchangeModal";
 import AnimatedEmoji from "../components/AnimatedEmoji";
 import Avatar from "../components/ui/Avatar";
-import { AVATARS } from "../data/avatars";
+import { AVATARS, COLLECTIONS } from "../data/avatars";
 import { canUseAvatar, getSelectedAvatar, setSelectedAvatar } from "../services/profile";
 import { getMyAccount } from "../services/accounts";
 import { toast } from "../services/toast";
@@ -242,7 +242,7 @@ function PriceButton({ price, currency = "tokens", disabled, onClick, children }
 }
 
 function EmojisTab({ wallet, onBuy }) {
-  const list = [...EMOJIS].sort((a, b) => a.price - b.price);
+  const list = EMOJIS.filter((e) => !e.event).sort((a, b) => a.price - b.price);
   const ownedCount = list.filter((e) => wallet.ownedEmojis?.includes(e.id) || ownsEmoji(e.id)).length;
   return (
     <section>
@@ -579,7 +579,7 @@ function AvatarsTab({ wallet, onBuy }) {
             src={a.src}
             alt={a.name}
             className={`h-32 w-32 object-contain transition duration-500 hover:scale-105 ${!available && exclusive ? "grayscale opacity-40" : ""}`}
-            style={a.tier === "support" ? { filter: available ? "drop-shadow(0 0 14px rgba(52,211,153,0.6))" : undefined } : a.tier === "admin" ? { filter: available ? "drop-shadow(0 0 14px rgba(243,210,122,0.6))" : undefined } : undefined}
+            style={a.collection === "night" ? { filter: "drop-shadow(0 0 16px rgba(59,130,246,0.6))" } : a.tier === "support" ? { filter: available ? "drop-shadow(0 0 14px rgba(52,211,153,0.6))" : undefined } : a.tier === "admin" ? { filter: available ? "drop-shadow(0 0 14px rgba(243,210,122,0.6))" : undefined } : undefined}
           />
           {!available && exclusive && <span className="absolute inset-0 flex items-center justify-center text-3xl">🔒</span>}
         </div>
@@ -607,19 +607,26 @@ function AvatarsTab({ wallet, onBuy }) {
     );
   };
 
-  const shop = AVATARS.filter((a) => a.tier === "shop");
+  const collections = COLLECTIONS.map((c) => ({ ...c, list: AVATARS.filter((a) => a.tier === "shop" && a.collection === c.id) }));
   const exclusive = AVATARS.filter((a) => (a.tier === "admin" || a.tier === "support") && a.src.endsWith(".webp"));
   const free = AVATARS.filter((a) => a.tier === "free" && a.src.endsWith(".webp"));
 
   return (
     <div className="space-y-10">
-      <section>
-        <h2 className="font-display text-2xl font-black text-[#f3e5ab]">Коллекция «Закат»</h2>
-        <p className="mt-1 text-sm text-[#a8916c]">Покупаются один раз и остаются навсегда. Выбранную аватарку видят все игроки.</p>
-        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          {shop.map((a, i) => <Card key={a.id} a={a} i={i} />)}
-        </div>
-      </section>
+      {collections.map((c) => (
+        <section key={c.id} className={c.id === "night" ? "avatar-collection avatar-collection--night" : undefined}>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="font-display text-2xl font-black text-[#f3e5ab]">Коллекция «{c.name}»</h2>
+            {c.id === "night" && <span className="chip !text-[9px]" style={{ color: "#7cc4ff", borderColor: "#3b82f6" }}>Новинка</span>}
+          </div>
+          <p className="mt-1 text-sm text-[#a8916c]">
+            {c.text} Покупаются один раз и остаются навсегда. Выбранную аватарку видят все игроки.
+          </p>
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            {c.list.map((a, i) => <Card key={a.id} a={a} i={i} />)}
+          </div>
+        </section>
+      ))}
       <section>
         <h2 className="font-display text-2xl font-black text-[#f3e5ab]">Эксклюзивные</h2>
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">

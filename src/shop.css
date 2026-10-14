@@ -355,3 +355,16 @@
 }
 .promo-ticket__stub::before { top: -10px; }
 .promo-ticket__stub::after { bottom: -10px; }
+
+/* Коллекция аватарок «Ночь» */
+.avatar-collection--night {
+  border-radius: 24px;
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  background:
+    radial-gradient(80% 60% at 50% 0%, rgba(59, 130, 246, 0.2), transparent 70%),
+    linear-gradient(175deg, #0b1124, #06070d);
+  padding: 1.25rem;
+  box-shadow: 0 20px 60px -30px rgba(59, 130, 246, 0.8);
+}
+.avatar-collection--night .noir-card { border-color: rgba(59, 130, 246, 0.25); background: linear-gradient(170deg, rgba(14, 24, 52, 0.9), rgba(6, 8, 16, 0.95)); }
+.avatar-collection--night .noir-card:hover { border-color: rgba(124, 196, 255, 0.6); }

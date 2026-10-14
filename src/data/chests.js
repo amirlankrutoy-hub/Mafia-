@@ -5,7 +5,9 @@ export const RARITIES = {
   common: { label: "Обычная", color: "#a1a1aa", glow: "rgba(161,161,170,0.55)" },
   rare: { label: "Редкая", color: "#3b82f6", glow: "rgba(59,130,246,0.65)" },
   epic: { label: "Эпическая", color: "#a855f7", glow: "rgba(168,85,247,0.7)" },
-  mythic: { label: "Мифическая", color: "#f59e0b", glow: "rgba(245,158,11,0.8)" }
+  mythic: { label: "Мифическая", color: "#f59e0b", glow: "rgba(245,158,11,0.8)" },
+  // только из события «Суд Мафий» (в сундуках не выпадают)
+  event: { label: "Событие «Суд Мафий»", color: "#ef4444", glow: "rgba(239,68,68,0.8)" }
 };
 
 export const RARITY_ORDER = ["common", "rare", "epic", "mythic"];
@@ -23,7 +25,9 @@ export const ROLE_RARITY = {
   stukach: "epic",
   otez: "epic",
   manyak: "mythic",
-  potroshitel: "mythic"
+  potroshitel: "mythic",
+  sudya: "event",
+  advokat: "event"
 };
 
 // Базовые роли есть у всех бесплатно: в коллекции показываются, но из сундуков не выпадают

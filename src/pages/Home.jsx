@@ -14,7 +14,7 @@ import {
 import { DECORATIONS, ADMIN_DECORATION } from '../data/shopData';
 import roles from '../data/roles';
 import { ownsDecoration, getEquippedDecoration, setEquippedDecoration, getWallet } from '../services/wallet';
-import { loginAdmin, isAdmin } from '../services/admin';
+import { loginAdmin, isAdmin, ADMIN_PATH } from '../services/admin';
 import { getAvailableAvatars, getSelectedAvatar, setSelectedAvatar } from '../services/profile';
 import { SOCKET_URL } from '../socket';
 import DecorationSVG from '../components/shop/DecorationSVG';
@@ -315,7 +315,7 @@ function AdminFooter() {
   const [busy, setBusy] = useState(false);
 
   const openPanel = () => {
-    if (isAdmin()) navigate('/admin');
+    if (isAdmin()) navigate(ADMIN_PATH);
     else setOpen(true);
   };
 
@@ -327,7 +327,7 @@ function AdminFooter() {
     setPassword('');
     if (res.success) {
       setOpen(false);
-      navigate('/admin');
+      navigate(ADMIN_PATH);
     } else {
       setMsg(res.message || 'Неверный пароль');
     }
@@ -344,9 +344,9 @@ function AdminFooter() {
         <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
           <Link to="/privacy" className={linkCls}>Конфиденциальность</Link>
           <Link to="/terms" className={linkCls}>Соглашение</Link>
-          <button type="button" onClick={openPanel} className={linkCls}>
-            <FontAwesomeIcon icon={faShieldHalved} className="mr-1.5" />
-            Администрация
+          {/* Незаметный вход для своих: выглядит как номер версии */}
+          <button type="button" onClick={openPanel} className="text-[10px] tracking-wider text-[#a8916c]/35 transition hover:text-[#a8916c]/60" title="">
+            v2.4.1
           </button>
         </div>
       </div>
@@ -354,7 +354,7 @@ function AdminFooter() {
       <Modal open={open} onClose={() => setOpen(false)}>
         <div className="text-center">
           <FontAwesomeIcon icon={faShieldHalved} className="text-3xl text-[#d4af37]" />
-          <h3 className="mt-3 font-display text-2xl font-black gold-text">Вход для администратора</h3>
+          <h3 className="mt-3 font-display text-2xl font-black gold-text">Служебный вход</h3>
         </div>
         <form onSubmit={submit} className="mt-6 space-y-3">
           <input

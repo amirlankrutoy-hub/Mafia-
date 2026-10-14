@@ -170,11 +170,30 @@ export function purchase({ kind, id, price }) {
 /** Выдать предмет бесплатно (награда из сундука). Возвращает false, если уже есть. */
 export function grantItem(kind, id) {
   const state = readState();
-  const listKey = kind === "role" ? "ownedRoles" : kind === "emoji" ? "ownedEmojis" : "ownedDecorations";
-  if (state[listKey].includes(id)) return false;
-  state[listKey] = [...state[listKey], id];
+  const listKey =
+    kind === "role" ? "ownedRoles" : kind === "emoji" ? "ownedEmojis" : kind === "avatar" ? "ownedAvatars" : "ownedDecorations";
+  const list = state[listKey] || [];
+  if (list.includes(id)) return false;
+  state[listKey] = [...list, id];
   writeState(state);
   return true;
+}
+
+/** Изменить баланс Токенов на delta (может быть отрицательным, но не ниже 0) */
+export function adjustBalance(delta) {
+  const state = readState();
+  state.balance = Math.max(0, state.balance + Math.trunc(Number(delta) || 0));
+  return writeState(state);
+}
+
+/** Забрать предмет (админ) */
+export function revokeItem(kind, id) {
+  const state = readState();
+  const listKey =
+    kind === "role" ? "ownedRoles" : kind === "emoji" ? "ownedEmojis" : kind === "avatar" ? "ownedAvatars" : "ownedDecorations";
+  state[listKey] = (state[listKey] || []).filter((x) => x !== id);
+  if (kind === "decoration" && state.equippedDecoration === id) state.equippedDecoration = null;
+  writeState(state);
 }
 
 export function setEquippedDecoration(decorationId) {

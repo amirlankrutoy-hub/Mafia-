@@ -211,7 +211,32 @@ export function ResultList({ results = [] }) {
   );
 }
 
-export function Morning({ day, results }) {
+/** Обратный отсчёт до времени endsAt (одиночный режим — фазы идут по таймеру) */
+export function useSecondsLeft(endsAt) {
+  const calc = () => (endsAt ? Math.max(0, Math.ceil((endsAt - Date.now()) / 1000)) : null);
+  const [left, setLeft] = useState(calc);
+  useEffect(() => {
+    if (!endsAt) return setLeft(null);
+    setLeft(calc());
+    const t = setInterval(() => setLeft(calc()), 250);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [endsAt]);
+  return left;
+}
+
+export function SoloTimer({ endsAt, label }) {
+  const left = useSecondsLeft(endsAt);
+  if (left == null) return null;
+  return (
+    <div className={`solo-timer ${left <= 5 ? "solo-timer--low" : ""}`}>
+      ⏱ {label} {left} с
+    </div>
+  );
+}
+
+export function Morning({ day, results, autoVoteAt }) {
+  const left = useSecondsLeft(autoVoteAt);
   return (
     <Stage tone="morning">
       <p className="eyebrow anim-fade-in">День {day || ""}</p>
@@ -219,7 +244,13 @@ export function Morning({ day, results }) {
       <div className="mt-8 flex w-full justify-center">
         <ResultList results={results} />
       </div>
-      <p className="mt-8 text-sm text-[#c9b48f]/70 anim-fade-in" style={{ "--i": 12 }}>Обсуждайте! Мэр скоро объявит голосование.</p>
+      {left != null ? (
+        <p className="mt-8 text-sm text-[#c9b48f] anim-fade-in" style={{ "--i": 12 }}>
+          Обсуждайте! Голосование начнётся через <b className="text-[#f3d27a]">{left} с</b>
+        </p>
+      ) : (
+        <p className="mt-8 text-sm text-[#c9b48f]/70 anim-fade-in" style={{ "--i": 12 }}>Обсуждайте! Мэр скоро объявит голосование.</p>
+      )}
     </Stage>
   );
 }
@@ -347,7 +378,7 @@ export function Voting({ vote, isMayor, canVote, blockedReason, progress, onVote
   );
 }
 
-export function Verdict({ candidate, avatar, isMayor, onExecute, onPardon }) {
+export function Verdict({ candidate, avatar, isMayor, onExecute, onPardon, solo, judge }) {
   return (
     <Stage tone="blood">
       <p className="eyebrow anim-fade-in">Город вынес приговор</p>
@@ -367,7 +398,15 @@ export function Verdict({ candidate, avatar, isMayor, onExecute, onPardon }) {
           </button>
         </div>
       ) : (
-        <p className="mt-10 text-xl text-[#f3d27a] animate-pulse">Мэр выносит решение…</p>
+        <p className="mt-10 text-xl text-[#f3d27a] animate-pulse">{solo ? "Приговор приводится в исполнение…" : "Мэр выносит решение…"}</p>
+      )}
+      {judge && (
+        <div className="mt-6 flex flex-col items-center gap-2 anim-fade-up">
+          <button type="button" disabled={judge.busy} onClick={judge.onCancel} className="btn btn-gold btn-lg btn-pulse">
+            <FontAwesomeIcon icon={faScaleBalanced} /> Отменить казнь (Судья)
+          </button>
+          <p className="text-xs text-[#c9b48f]">Вы Судья: можете один раз за игру спасти осуждённого</p>
+        </div>
       )}
     </Stage>
   );
@@ -388,7 +427,11 @@ export function VoteResult({ voteResult }) {
         <>
           <FontAwesomeIcon icon={faHandPeace} className="text-6xl text-emerald-400 anim-pop" />
           <h1 className="mt-6 text-center font-display text-5xl font-black gold-text anim-blur-in">
-            {voteResult?.alibi ? `У ${pardoned.name} нашлось алиби!` : `Мэр помиловал ${pardoned.name}`}
+            {voteResult?.judge
+              ? `Судья отменил казнь: ${pardoned.name}`
+              : voteResult?.alibi
+                ? `У ${pardoned.name} нашлось алиби!`
+                : `Мэр помиловал ${pardoned.name}`}
           </h1>
           {voteResult?.alibi && <p className="mt-4 text-lg text-[#e6d5bc] anim-fade-up" style={{ "--i": 4 }}>Способность «Алиби» спасла игрока от казни.</p>}
         </>

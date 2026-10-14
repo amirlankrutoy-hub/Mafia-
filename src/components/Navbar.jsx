@@ -17,13 +17,14 @@ import {
   faLanguage,
   faRankingStar,
   faPlay,
-  faGear
+  faGear,
+  faGavel
 } from '@fortawesome/free-solid-svg-icons';
 import TopUpModal from './shop/TopUpModal';
 import WalletChips from './WalletChips';
 import LanguageSwitcher from './LanguageSwitcher';
 import { useMusic } from '../context/MusicContext';
-import { isAdmin, onAdminChanged } from '../services/admin';
+import { isAdmin, onAdminChanged, ADMIN_PATH } from '../services/admin';
 import { getTeniBalance } from '../services/teniWallet';
 import { getBalance } from '../services/wallet';
 import { getSelectedAvatar, getFavoriteRole } from '../services/profile';
@@ -41,6 +42,7 @@ const NAV = [
   { id: 'roles', label: 'Роли', icon: faIdCard, to: '/roles' },
   { id: 'top', label: 'Мировой топ', icon: faRankingStar, to: '/top' },
   { id: 'friends', label: 'Друзья', icon: faUserGroup, to: '/friends' },
+  { id: 'event', label: 'Суд Мафий', icon: faGavel, to: '/event' },
   { id: 'shop', label: 'Магазин', icon: faStore, to: '/shop' },
   { id: 'achievements', label: 'Достижения', icon: faTrophy, to: '/achievements' },
   { id: 'settings', label: 'Настройки', icon: faGear, to: '/settings' }
@@ -193,6 +195,11 @@ const Navbar = ({ account }) => {
                 <FontAwesomeIcon icon={item.icon} className="w-4 transition-transform duration-300 group-hover:scale-110" />
                 {item.label}
                 {item.id === 'friends' && <Badge count={requests + dmUnread} />}
+                {item.id === 'event' && (
+                  <span className="ml-auto rounded-full bg-gradient-to-r from-[#ef4444] to-[#b91c1c] px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-white shadow-[0_0_12px_rgba(239,68,68,0.8)] animate-pulse">
+                    Новое
+                  </span>
+                )}
               </>
             )}
           </NavLink>
@@ -204,7 +211,7 @@ const Navbar = ({ account }) => {
           </button>
         )}
         {admin && (
-          <NavLink to="/admin" className={linkClass}>
+          <NavLink to={ADMIN_PATH} className={linkClass}>
             <FontAwesomeIcon icon={faShieldHalved} className="w-4" />
             Админ-панель
           </NavLink>

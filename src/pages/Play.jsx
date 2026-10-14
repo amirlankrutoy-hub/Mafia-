@@ -939,7 +939,7 @@ useEffect(() => {
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-            {roles.map((role) => {
+            {roles.filter((r) => !r.event).map((role) => {
               const count = selectedRoles.filter(id => id === role.id).length;
               return (
                 <div key={role.id} onClick={() => handleAddRole(role.id)} className={`relative cursor-pointer rounded-xl border p-2.5 sm:p-3 text-center transition-all ${count > 0 ? 'border-[#d4af37] bg-[#8b0000]/40' : 'border-[#c5a059]/30 bg-[#120a07]'}`}>

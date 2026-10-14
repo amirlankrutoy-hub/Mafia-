@@ -5,6 +5,10 @@ import { toast } from "../services/toast";
 import { credit } from "../services/wallet";
 import { applyTopup } from "../services/topup";
 import { forgetLocalAccount } from "../services/auth";
+import { adjustBalance, grantItem, revokeItem } from "../services/wallet";
+import { adjustTeni } from "../services/teniWallet";
+import { renameMyAccount } from "../services/accounts";
+import { dropAdminSession, ADMIN_PATH } from "../services/admin";
 import { setAccountStatus } from "../services/status";
 import { addUnread } from "../services/dm";
 import { isAdmin } from "../services/admin";
@@ -68,12 +72,59 @@ export default function GlobalEvents({ account }) {
       toast({ kind: "info", title: "Войдите в аккаунт", text: "Этот аккаунт защищён — войдите через Google или почту." });
     };
     socket.on("auth:required", onAuthRequired);
+    // Выдачи от администрации (валюта, предметы) — применяем и подтверждаем серверу
+    const GRANT_NAMES = { role: "роль", avatar: "аватарка", emoji: "эмодзи", decoration: "украшение" };
+    const onAdminGrant = (list) => {
+      if (!Array.isArray(list)) return;
+      const applied = JSON.parse(sessionStorage.getItem("mafia_applied_grants") || "[]");
+      const ids = [];
+      list.forEach((g) => {
+        ids.push(g.id);
+        if (applied.includes(g.id)) return;
+        applied.push(g.id);
+        if (g.type === "tokens") {
+          adjustBalance(g.amount);
+          toast({ kind: "money", title: `${g.amount > 0 ? "+" : ""}${g.amount} Токенов`, text: "От администрации" });
+        } else if (g.type === "teni") {
+          adjustTeni(g.amount);
+          toast({ kind: "money", title: `${g.amount > 0 ? "+" : ""}${g.amount} теней`, text: "От администрации" });
+        } else if (g.type === "item") {
+          grantItem(g.kind, g.itemId);
+          toast({ kind: "success", title: "Подарок от администрации", text: `Новая ${GRANT_NAMES[g.kind] || "вещь"} в вашей коллекции` });
+        } else if (g.type === "remove-item") {
+          revokeItem(g.kind, g.itemId);
+        }
+      });
+      sessionStorage.setItem("mafia_applied_grants", JSON.stringify(applied.slice(-200)));
+      socket.emit("admin-grant:ack", ids);
+    };
+    const onRenamed = ({ name }) => {
+      if (!name) return;
+      renameMyAccount(name);
+      toast({ kind: "info", title: "Ваш ник изменён администрацией", text: `Теперь вы — ${name}` });
+    };
+    const onAdminMessage = ({ text }) => toast({ kind: "announce", title: "Сообщение от администрации", text, duration: 15000 });
+    const onAdminAlert = ({ text }) => toast({ kind: "error", title: "Безопасность админки", text, duration: 12000 });
+    const onAdminKicked = () => {
+      dropAdminSession();
+      toast({ kind: "info", text: "Сессия админ-панели закрыта" });
+    };
+    socket.on("admin-grant", onAdminGrant);
+    socket.on("account:renamed", onRenamed);
+    socket.on("admin-message", onAdminMessage);
+    socket.on("admin:alert", onAdminAlert);
+    socket.on("admin:kicked", onAdminKicked);
     socket.on("connect", hello);
     if (!socket.connected) socket.connect();
     else hello();
     return () => {
       socket.off("connect", hello);
       socket.off("auth:required", onAuthRequired);
+      socket.off("admin-grant", onAdminGrant);
+      socket.off("account:renamed", onRenamed);
+      socket.off("admin-message", onAdminMessage);
+      socket.off("admin:alert", onAdminAlert);
+      socket.off("admin:kicked", onAdminKicked);
     };
   }, [account?.id]);
 
@@ -163,7 +214,7 @@ export default function GlobalEvents({ account }) {
         title: `Сообщение от саппорта ${r.fromName}`,
         text: r.text.slice(0, 140),
         duration: 12000,
-        actions: [{ label: "Открыть", onClick: () => navigate("/admin?tab=support") }]
+        actions: [{ label: "Открыть", onClick: () => navigate(`${ADMIN_PATH}?tab=support`) }]
       });
     };
     const offDm = onDirectMessage((m) => {

@@ -6,6 +6,10 @@ import { grantAdminEverything } from "./wallet";
 import { ADMIN_DECORATION, ADMIN_EMOJI } from "../data/shopData";
 
 const TOKEN_KEY = "mafia_admin_token_v2";
+
+// Адрес панели не «/admin»: по обычной ссылке её не найти. Без входа
+// по этому адресу показывается «Страница не найдена».
+export const ADMIN_PATH = "/ops-7kq2";
 const EVENT = "mafia-admin-changed";
 
 function readToken() {
@@ -99,6 +103,31 @@ export const adminCloseRoom = (code) => adminCall("admin:close-room", code);
 export const adminDisableRole = (roleId, duration) => adminCall("admin:disable-role", { roleId, duration });
 export const adminEnableRole = (roleId) => adminCall("admin:enable-role", roleId);
 export const adminAnnounce = (text) => adminCall("admin:announce", text);
+
+// ---------- Полное управление игроком ----------
+export const adminGrant = (accountId, grant) => adminCall("admin:grant", { accountId, ...grant });
+export const adminRename = (accountId, name) => adminCall("admin:rename", { accountId, name });
+export const adminResetStats = (accountId) => adminCall("admin:reset-stats", { accountId });
+export const adminMessage = (accountId, text) => adminCall("admin:message", { accountId, text });
+export const adminKick = (accountId) => adminCall("admin:kick", { accountId });
+export const adminAccount = (accountId, action, password) => adminCall("admin:account", { accountId, action, password });
+
+// ---------- Безопасность ----------
+export const adminSecurity = () => adminCall("admin:security");
+export async function adminChangePassword(current, next) {
+  const res = await adminCall("admin:change-password", { current, next });
+  if (res.success && res.token) writeToken(res.token);
+  return res;
+}
+export async function adminLogoutAll() {
+  const res = await adminCall("admin:logout-all");
+  if (res.success && res.token) writeToken(res.token);
+  return res;
+}
+/** Сервер закрыл эту сессию админа (смена пароля / «выйти везде») */
+export function dropAdminSession() {
+  writeToken(null);
+}
 
 // ---------- Отключённые роли (кэш для галереи/настройки партии) ----------
 let disabledCache = {};

@@ -1,0 +1,453 @@
+/* ============================================================
+   Одиночный режим
+   ============================================================ */
+.solo-menu,
+.solo-lobby {
+  position: relative;
+  overflow: hidden;
+  border-radius: 28px;
+  border: 1px solid rgba(124, 140, 255, 0.3);
+  background:
+    radial-gradient(70% 50% at 50% 0%, rgba(99, 102, 241, 0.28), transparent 70%),
+    radial-gradient(60% 50% at 100% 100%, rgba(192, 21, 31, 0.15), transparent 70%),
+    linear-gradient(175deg, #0d0f24, #06060d 75%);
+  padding: 3.5rem 1.1rem 2rem;
+  min-height: calc(100vh - 7rem);
+  box-shadow: 0 30px 80px -40px rgba(99, 102, 241, 0.6);
+}
+.solo-lobby { padding: 1.25rem 1.1rem 9rem; }
+@media (min-width: 640px) {
+  .solo-menu { padding: 3.5rem 2rem 2.5rem; }
+  .solo-lobby { padding: 1.5rem 2rem 8rem; }
+}
+.solo-menu__glow {
+  position: absolute;
+  left: 50%;
+  top: -160px;
+  width: 520px;
+  height: 360px;
+  margin-left: -260px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(129, 140, 248, 0.35), transparent 65%);
+  filter: blur(12px);
+  pointer-events: none;
+  animation: achGlow 5s ease-in-out infinite;
+}
+.solo-back {
+  position: absolute;
+  left: 14px;
+  top: 14px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(159, 180, 255, 0.35);
+  background: rgba(0, 0, 0, 0.45);
+  padding: 0.45rem 0.95rem;
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: #e0e7ff;
+  transition: border-color 0.2s;
+}
+.solo-back:hover { border-color: #9fb4ff; }
+.solo-dice {
+  display: inline-flex;
+  width: 84px;
+  height: 84px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 24px;
+  background: linear-gradient(135deg, #818cf8, #4338ca);
+  color: #fff;
+  font-size: 2.4rem;
+  box-shadow: 0 0 40px rgba(129, 140, 248, 0.7), inset 0 2px 0 rgba(255, 255, 255, 0.3);
+  animation: soloDice 4s ease-in-out infinite;
+}
+@keyframes soloDice {
+  0%, 100% { transform: rotate(-8deg) translateY(0); }
+  50% { transform: rotate(8deg) translateY(-6px); }
+}
+.solo-title {
+  background: linear-gradient(90deg, #a5b4fc, #ffffff, #c7d2fe, #818cf8, #ffffff);
+  background-size: 250% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmerText 6s linear infinite;
+  filter: drop-shadow(0 0 20px rgba(129, 140, 248, 0.4));
+}
+.solo-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 999px;
+  border: 1px solid rgba(159, 180, 255, 0.2);
+  background: rgba(0, 0, 0, 0.35);
+  padding: 0.35rem 0.8rem;
+  font-size: 0.75rem;
+  color: #c9c3e6;
+}
+.solo-stat b { color: #fff; }
+.solo-stat__dot { width: 8px; height: 8px; border-radius: 50%; background: #6b7280; }
+.solo-stat__dot--on { background: #34d399; box-shadow: 0 0 8px #34d399; animation: ping 1.6s ease-in-out infinite; }
+
+.solo-cta {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  overflow: hidden;
+  border-radius: 22px;
+  padding: 1.1rem 1.2rem;
+  color: #fff;
+  transition: transform 0.25s var(--ease-spring), box-shadow 0.25s, filter 0.25s;
+}
+.solo-cta:not(:disabled):hover { transform: translateY(-3px); filter: brightness(1.08); }
+.solo-cta:disabled { opacity: 0.6; cursor: wait; }
+.solo-cta::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 35%, rgba(255, 255, 255, 0.2) 50%, transparent 65%);
+  transform: translateX(-120%);
+  animation: walletShine 4s ease-in-out infinite;
+}
+.solo-cta--play {
+  background: linear-gradient(135deg, #818cf8, #4f46e5 55%, #312e81);
+  box-shadow: 0 18px 40px -16px rgba(99, 102, 241, 0.9);
+}
+.solo-cta--create {
+  border: 1px solid rgba(159, 180, 255, 0.35);
+  background: linear-gradient(160deg, rgba(30, 32, 70, 0.9), rgba(10, 10, 22, 0.95));
+}
+.solo-cta__icon {
+  display: flex;
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.16);
+  font-size: 1.4rem;
+}
+.solo-panel {
+  border-radius: 22px;
+  border: 1px solid rgba(159, 180, 255, 0.2);
+  background: linear-gradient(170deg, rgba(20, 22, 48, 0.85), rgba(8, 8, 18, 0.9));
+  padding: 1.1rem;
+}
+.solo-rule { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; }
+.solo-rule__pill {
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--c) 45%, transparent);
+  background: color-mix(in srgb, var(--c) 14%, transparent);
+  padding: 0.1rem 0.6rem;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--c);
+}
+.solo-own {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--c) 45%, transparent);
+  background: rgba(0, 0, 0, 0.35);
+  padding: 0.15rem 0.6rem 0.15rem 0.15rem;
+  font-size: 11px;
+  font-weight: 700;
+  color: #e0e7ff;
+}
+.solo-own img { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; object-position: top; }
+.solo-own--locked { opacity: 0.4; filter: grayscale(1); border-color: rgba(255, 255, 255, 0.1); }
+
+/* лобби */
+.solo-faction {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
+  background:
+    radial-gradient(80% 70% at 50% 0%, color-mix(in srgb, var(--c) 20%, transparent), transparent 70%),
+    rgba(0, 0, 0, 0.35);
+  padding: 0.75rem 0.4rem;
+  color: var(--c);
+}
+.solo-faction b { font-family: var(--font-display); font-size: 1.8rem; line-height: 1; color: #fff; }
+.solo-faction span { font-size: 10px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; }
+.solo-seat {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border-radius: 18px;
+  border: 1px solid rgba(159, 180, 255, 0.18);
+  background: linear-gradient(170deg, rgba(22, 24, 54, 0.85), rgba(8, 8, 18, 0.9));
+  padding: 0.9rem 0.5rem 0.7rem;
+  text-align: center;
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+.solo-seat--ready { border-color: rgba(52, 211, 153, 0.6); box-shadow: 0 0 22px -8px rgba(52, 211, 153, 0.8); }
+.solo-seat--empty { border-style: dashed; background: transparent; justify-content: center; min-height: 128px; }
+.solo-seat__wait {
+  display: flex;
+  width: 58px;
+  height: 58px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 2px dashed rgba(159, 180, 255, 0.25);
+  color: rgba(159, 180, 255, 0.5);
+  animation: float 3s ease-in-out infinite;
+}
+.solo-seat__host {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  display: flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #fff1b8, #d4af37);
+  color: #2a1a02;
+  font-size: 10px;
+  box-shadow: 0 0 12px rgba(243, 210, 122, 0.7);
+}
+.solo-seat__state {
+  margin-top: 0.3rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0.05rem 0.55rem;
+  font-size: 10px;
+  font-weight: 800;
+  color: #9aa3c7;
+}
+.solo-seat__state--on { background: rgba(52, 211, 153, 0.15); color: #6ee7b7; }
+.solo-actions {
+  position: fixed;
+  left: 50%;
+  bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  z-index: 40;
+  display: flex;
+  width: min(92vw, 30rem);
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  transform: translateX(-50%);
+  border-radius: 24px;
+  border: 1px solid rgba(159, 180, 255, 0.3);
+  background: rgba(10, 10, 24, 0.85);
+  backdrop-filter: blur(14px);
+  padding: 0.7rem;
+  box-shadow: 0 20px 50px -20px rgba(0, 0, 0, 0.9);
+}
+@media (min-width: 1024px) { .solo-actions { left: calc(50% + 9rem); } }
+.solo-ready,
+.solo-start {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 16px;
+  padding: 0.85rem 1rem;
+  font-weight: 900;
+  transition: transform 0.2s var(--ease-spring), filter 0.2s;
+}
+.solo-ready { border: 1px solid rgba(159, 180, 255, 0.4); background: rgba(255, 255, 255, 0.06); color: #e0e7ff; }
+.solo-ready--on { border-color: transparent; background: linear-gradient(135deg, #34d399, #059669); color: #fff; box-shadow: 0 10px 26px -10px rgba(16, 185, 129, 0.9); }
+.solo-start { background: linear-gradient(135deg, #818cf8, #4f46e5); color: #fff; box-shadow: 0 10px 26px -10px rgba(99, 102, 241, 0.9); }
+.solo-start:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+.solo-ready:active,
+.solo-start:not(:disabled):active { transform: scale(0.97); }
+.solo-countdown {
+  position: fixed;
+  inset: 0;
+  z-index: 700;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  background: radial-gradient(circle, rgba(49, 46, 129, 0.75), rgba(3, 3, 8, 0.92) 70%);
+  backdrop-filter: blur(6px);
+  color: #c7d2fe;
+  text-align: center;
+  padding: 1rem;
+}
+.solo-countdown__num {
+  font-family: var(--font-display);
+  font-size: 9rem;
+  font-weight: 900;
+  line-height: 1;
+  color: #fff;
+  text-shadow: 0 0 40px rgba(129, 140, 248, 0.9);
+  animation: soloCount 1s ease-out both;
+}
+@keyframes soloCount {
+  0% { transform: scale(1.8); opacity: 0; }
+  30% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.85); opacity: 0.6; }
+}
+
+/* ---------- Прокрутка ролей (как в «Супер Сус») ---------- */
+.solo-reel {
+  position: fixed;
+  inset: 0;
+  z-index: 600;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #04040a;
+  padding: 1.5rem 0;
+}
+.solo-reel__bg {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 45%, rgba(99, 102, 241, 0.25), transparent 55%);
+  transition: background 1s;
+}
+.solo-reel__bg--on { background: radial-gradient(circle at 50% 45%, var(--team-glow), transparent 60%); }
+.solo-reel__eyebrow {
+  position: relative;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  color: #a5b4fc;
+  animation: fadeIn 0.6s ease both;
+}
+.solo-reel__window {
+  position: relative;
+  margin-top: 1.5rem;
+  width: 100%;
+  overflow: hidden;
+  padding: 26px 0;
+  border-block: 1px solid rgba(129, 140, 248, 0.25);
+  background: linear-gradient(180deg, rgba(20, 20, 50, 0.6), rgba(5, 5, 14, 0.6));
+}
+.solo-reel__window--done { border-color: color-mix(in srgb, var(--team) 50%, transparent); }
+.solo-reel__strip {
+  display: flex;
+  width: max-content;
+  will-change: transform;
+}
+.solo-reel__card {
+  position: relative;
+  flex-shrink: 0;
+  aspect-ratio: 2 / 3;
+  overflow: hidden;
+  border-radius: 16px;
+  border: 2px solid color-mix(in srgb, var(--c) 55%, transparent);
+  background: #000;
+  transition: transform 0.6s var(--ease-spring), filter 0.6s, opacity 0.6s, box-shadow 0.6s;
+}
+.solo-reel__card img { width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+.solo-reel__card span {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.9));
+  padding: 1.2rem 0.4rem 0.45rem;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 800;
+  color: #fff;
+}
+.solo-reel__card--dim { opacity: 0.25; filter: grayscale(1) blur(1px); }
+.solo-reel__card--win {
+  z-index: 2;
+  transform: scale(1.22);
+  border-color: var(--team);
+  box-shadow: 0 0 0 3px var(--team), 0 0 50px var(--team-glow);
+}
+.solo-reel__marker {
+  position: absolute;
+  left: 50%;
+  top: 10px;
+  bottom: 10px;
+  z-index: 3;
+  width: 152px;
+  margin-left: -76px;
+  border-radius: 20px;
+  border: 3px solid #fff1b8;
+  box-shadow: 0 0 24px rgba(243, 210, 122, 0.8), inset 0 0 24px rgba(243, 210, 122, 0.25);
+  pointer-events: none;
+}
+.solo-reel__marker::before,
+.solo-reel__marker::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  margin-left: -10px;
+  border: 10px solid transparent;
+}
+.solo-reel__marker::before { top: -14px; border-top-color: #fff1b8; }
+.solo-reel__marker::after { bottom: -14px; border-bottom-color: #fff1b8; }
+.solo-reel__window--done .solo-reel__marker { opacity: 0; transition: opacity 0.4s; }
+.solo-reel__fade { position: absolute; top: 0; bottom: 0; z-index: 2; width: 22%; pointer-events: none; }
+.solo-reel__fade--l { left: 0; background: linear-gradient(90deg, #04040a, transparent); }
+.solo-reel__fade--r { right: 0; background: linear-gradient(270deg, #04040a, transparent); }
+.solo-reel__info { position: relative; margin-top: 2rem; min-height: 8rem; max-width: 26rem; padding: 0 1rem; text-align: center; }
+.solo-reel__hint { font-size: 0.85rem; color: #9aa3c7; animation: fadeIn 0.6s ease both; }
+.solo-reel__team {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--team) 50%, transparent);
+  background: color-mix(in srgb, var(--team) 14%, transparent);
+  padding: 0.25rem 0.85rem;
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--team);
+  animation: pop 0.5s var(--ease-spring) both;
+}
+.solo-reel__team span { width: 8px; height: 8px; border-radius: 50%; box-shadow: 0 0 8px var(--team); }
+.solo-reel__name {
+  margin-top: 0.6rem;
+  font-family: var(--font-display);
+  font-size: clamp(2.4rem, 9vw, 3.6rem);
+  font-weight: 900;
+  line-height: 1;
+  color: #fff;
+  text-shadow: 0 0 30px var(--team-glow);
+  animation: blurIn 0.8s var(--ease-out) both;
+}
+.solo-reel__desc { margin-top: 0.6rem; font-size: 0.9rem; color: #c9c3e6; animation: fadeUp 0.6s var(--ease-out) 0.3s both; }
+
+/* таймер хода в игре */
+.solo-timer {
+  position: fixed;
+  left: 50%;
+  top: calc(0.75rem + env(safe-area-inset-top, 0px));
+  z-index: 645;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  border: 1px solid rgba(159, 180, 255, 0.35);
+  background: rgba(8, 8, 20, 0.8);
+  backdrop-filter: blur(8px);
+  padding: 0.3rem 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: #e0e7ff;
+}
+.solo-timer--low { border-color: rgba(248, 113, 113, 0.6); color: #fca5a5; }
+
+/* карточка режима в меню онлайн-игры */
+.mode-solo-card {
+  border-color: rgba(129, 140, 248, 0.45) !important;
+  background:
+    radial-gradient(80% 70% at 100% 0%, rgba(99, 102, 241, 0.3), transparent 70%),
+    linear-gradient(160deg, rgba(20, 22, 52, 0.95), rgba(8, 8, 18, 0.95)) !important;
+}

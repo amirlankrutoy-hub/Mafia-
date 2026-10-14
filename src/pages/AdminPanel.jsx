@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
+import PlayerControls from "./admin/PlayerControls";
+import SecurityTab from "./admin/SecurityTab";
+import NotFound from "./NotFound";
 import { useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -26,6 +29,7 @@ import {
   adminUnban,
   adminBans,
   adminGive,
+  onAdminChanged,
   adminCloseRoom,
   adminDisableRole,
   adminEnableRole,
@@ -48,7 +52,8 @@ const TABS = [
   { id: "bans", label: "Баны", icon: faBan },
   { id: "roles", label: "Роли", icon: faMasksTheater },
   { id: "support", label: "Саппорты", icon: faHeadset },
-  { id: "announce", label: "Объявление", icon: faBullhorn }
+  { id: "announce", label: "Объявление", icon: faBullhorn },
+  { id: "security", label: "Безопасность", icon: faShieldHalved }
 ];
 
 const BAN_DURATIONS = [
@@ -88,7 +93,8 @@ export default function AdminPanel() {
   const [authed, setAuthed] = useState(isAdmin());
   const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get("tab") || "overview");
 
-  if (!authed) return <AdminLogin onDone={() => setAuthed(true)} />;
+  useEffect(() => onAdminChanged(() => setAuthed(isAdmin())), []);
+  if (!authed) return <NotFound />;
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -129,6 +135,7 @@ export default function AdminPanel() {
         {tab === "roles" && <RolesTab />}
         {tab === "support" && <SupportTab />}
         {tab === "announce" && <Announce />}
+        {tab === "security" && <SecurityTab />}
       </div>
     </div>
   );
@@ -413,19 +420,7 @@ function PlayerCard({ id }) {
         )}
       </div>
 
-      <div className="mt-5 border-t border-[#d4af37]/15 pt-4">
-        <p className="eyebrow !text-[0.6rem]">Выдать Токены (игрок должен быть онлайн)</p>
-        <div className="mt-2 flex gap-2">
-          <input value={amount} onChange={(e) => setAmount(e.target.value.replace(/\D/g, ""))} className="input-noir" inputMode="numeric" />
-          <button
-            disabled={!p.online || !Number(amount)}
-            onClick={async () => notify(await adminGive(id, Number(amount)))}
-            className="btn btn-gold btn-sm shrink-0"
-          >
-            Выдать
-          </button>
-        </div>
-      </div>
+      <PlayerControls id={id} player={p} onChanged={load} />
 
       <Modal open={banOpen} onClose={() => setBanOpen(false)}>
         <h3 className="font-display text-2xl font-black blood-text">Заблокировать {p.name}</h3>

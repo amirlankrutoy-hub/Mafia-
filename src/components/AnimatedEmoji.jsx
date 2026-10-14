@@ -24,7 +24,12 @@ const ANIM = {
   e_bomb: "em-bomb",
   e_handcuffs: "em-swing",
   e_wine: "em-swing",
-  e_admin: "em-crown"
+  e_admin: "em-crown",
+  e_scales: "em-tilt",
+  e_gavel: "em-stab",
+  e_judge: "em-bounce",
+  e_chains: "em-swing",
+  e_scroll: "em-float"
 };
 
 export default function AnimatedEmoji({ id, symbol, className = "", paused = false }) {

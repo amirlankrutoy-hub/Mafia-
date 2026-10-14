@@ -15,7 +15,9 @@ const ROLE_CATEGORY = {
   manyak: "neutrals",
   potroshitel: "neutrals",
   poklon: "neutrals",
-  stukach: "neutrals"
+  stukach: "neutrals",
+  sudya: "civilians",
+  advokat: "mafia"
 };
 
 const ROLE_NAMES = {
@@ -30,7 +32,9 @@ const ROLE_NAMES = {
   sherif: "Шериф",
   stukach: "Стукач",
   sveshennik: "Священник",
-  vor: "Вор"
+  vor: "Вор",
+  sudya: "Судья",
+  advokat: "Адвокат"
 };
 
 const FACTION_NAMES = {
@@ -39,7 +43,7 @@ const FACTION_NAMES = {
   neutrals: "нейтралов"
 };
 
-const MAFIA_ROLES = ["mafia", "otez", "vor"];
+const MAFIA_ROLES = ["mafia", "otez", "vor", "advokat"];
 const isMafia = (p) => MAFIA_ROLES.includes(p.role);
 
 const NIGHT_PHRASES = [
@@ -86,6 +90,7 @@ class GameFlowManager {
       p.readyForGame = false;
       p.linkedTo = null;
       p.helped = null;
+      p.judgeUsed = false;
     });
 
     return room;
@@ -432,6 +437,20 @@ class GameFlowManager {
           name: t.name,
           text: `${t.name} ${label}`
         });
+      });
+    });
+
+    // --- Адвокат: узнаёт точную роль выбранного игрока ---
+    (actions.advokat || []).forEach((a) => {
+      const t = byId(a.targetId);
+      if (!t) return;
+      results.push({
+        type: "check",
+        privateTo: [a.by],
+        playerId: t.id,
+        name: t.name,
+        role: t.role,
+        text: `Адвокат узнал: ${t.name} — ${roleName(t.role)}`
       });
     });
 

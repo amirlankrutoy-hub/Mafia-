@@ -26,7 +26,7 @@ export default function PartySetup({ players, onStart, onClose }) {
 
   const total = useMemo(() => Object.values(selectedRoles).reduce((s, v) => s + v, 0), [selectedRoles]);
   const need = players.length;
-  const mafiaCount = ["mafia", "otez", "vor"].reduce((s, r) => s + (selectedRoles[r] || 0), 0);
+  const mafiaCount = ["mafia", "otez", "vor", "advokat"].reduce((s, r) => s + (selectedRoles[r] || 0), 0);
 
   const change = (id, d) =>
     setSelectedRoles((prev) => ({ ...prev, [id]: Math.max(0, Math.min(need, (prev[id] || 0) + d)) }));
@@ -112,7 +112,7 @@ export default function PartySetup({ players, onStart, onClose }) {
                           </div>
                         ) : (
                           <div className="mt-2 text-[11px] font-bold text-[#f3d27a]">
-                            🔒 {RARITIES[ROLE_RARITY[role.id]]?.label} — выпадает из сундуков
+                            🔒 {ROLE_RARITY[role.id] === "event" ? "Только из события «Суд Мафий»" : `${RARITIES[ROLE_RARITY[role.id]]?.label} — выпадает из сундуков`}
                           </div>
                         )}
                       </div>

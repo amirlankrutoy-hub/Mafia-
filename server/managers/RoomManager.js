@@ -40,6 +40,37 @@ class RoomManager {
         return rooms[code];
     }
 
+    // Одиночный режим: мэра нет, создатель — обычный игрок и хозяин комнаты.
+    // Вместо мэра — «пустое место», чтобы общий код не ломался (сообщения ему
+    // уходят в никуда).
+    createSoloRoom(socket, player) {
+        const room = this.createRoom(socket, "", "/avatars/avatar1.svg", null);
+        room.mode = "solo";
+        room.mayor = { id: `solo:${room.code}`, accountId: null, name: "", avatar: null, decoration: null, connected: true, phantom: true };
+        room.hostId = socket.id;
+        room.players.push({
+            id: socket.id,
+            accountId: player.accountId || null,
+            name: String(player.name || "Игрок").slice(0, 24),
+            avatar: player.avatar,
+            decoration: null,
+            ownedRoles: player.ownedRoles || [],
+            role: null,
+            alive: true,
+            ready: false,
+            canVote: true,
+            connected: true
+        });
+        return room;
+    }
+
+    /** Открытые комнаты одиночного режима, куда можно зайти */
+    openSoloRooms() {
+        return Object.values(rooms).filter(
+            (r) => r.mode === "solo" && !r.started && r.players.filter((p) => p.connected !== false).length < MAX_PLAYERS
+        );
+    }
+
     // Узнаём "того же самого" человека после F5/обрыва связи.
     // Главный признак — accountId: раньше сравнивали только ник, и игрок
     // с таким же ником (например, друг, зашедший по ссылке) "захватывал"
@@ -228,3 +259,4 @@ class RoomManager {
 }
 
 module.exports = new RoomManager();
+module.exports.MAX_PLAYERS = MAX_PLAYERS;

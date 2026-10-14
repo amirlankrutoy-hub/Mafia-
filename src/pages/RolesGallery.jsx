@@ -64,7 +64,7 @@ function RoleCard({ role, i }) {
               <span className="role-card__lock-icon">
                 <FontAwesomeIcon icon={faLock} />
               </span>
-              <span className="text-[11px] font-bold text-[#f3e5ab]">Выпадает из сундуков</span>
+              <span className="text-[11px] font-bold text-[#f3e5ab]">{role.event ? "Только из события «Суд Мафий»" : "Выпадает из сундуков"}</span>
             </div>
           )}
 

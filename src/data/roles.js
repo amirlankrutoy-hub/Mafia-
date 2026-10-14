@@ -107,7 +107,30 @@ const roles = [
     image: '/roles/sveshennik.webp',
     description: 'Может либо проверить игрока, либо устранить его.',
     ability: 'Проверяет или устраняет игроков.'
+  },
+  {
+    id: 'sudya',
+    name: 'Судья',
+    category: 'civilians',
+    team: 'Мирные жители',
+    image: '/roles/judge.webp',
+    event: true,
+    description: 'Днём может спасти от суда Линча: если город проголосовал за казнь игрока, Судья официально отменяет приговор.',
+    ability: 'Один раз за игру отменяет казнь игрока, выбранного городом.'
+  },
+  {
+    id: 'advokat',
+    name: 'Адвокат',
+    category: 'mafia',
+    team: 'Мафия',
+    image: '/roles/lawyer.webp',
+    event: true,
+    description: 'Юрист семьи: знает своих и ночью добывает сведения о любом игроке.',
+    ability: 'Ночью узнаёт точную роль любого живого игрока. Ходит до мафии.'
   }
 ];
+
+/** Роли, которые выпадают только из события «Суд Мафий» */
+export const EVENT_ROLE_IDS = ['sudya', 'advokat'];
 
 export default roles;

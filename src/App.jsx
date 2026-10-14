@@ -22,6 +22,7 @@ import { getMyAccount } from './services/accounts';
 import Navbar from './components/Navbar';
 import NotFound from './pages/NotFound';
 import NameModal from './components/NameModal';
+import { ADMIN_PATH } from './services/admin';
 import { resumeSession, startCloudSync, forgetLocalAccount, getAuthToken } from './services/auth';
 import { MusicProvider, useMusic } from './context/MusicContext';
 import { LanguageProvider } from './context/LanguageContext';
@@ -32,6 +33,7 @@ import Terms from './pages/Terms';
 const AdminPanel = lazy(() => import('./pages/AdminPanel'));
 const Play = lazy(() => import('./pages/Play'));
 const Settings = lazy(() => import('./pages/Settings'));
+const EventPage = lazy(() => import('./pages/EventPage'));
 const AuthCallback = lazy(() => import('./pages/AuthCallback'));
 
 function AppRoutes({ account, showModal, handleAccountReady, loginReason }) {
@@ -93,8 +95,9 @@ function AppRoutes({ account, showModal, handleAccountReady, loginReason }) {
                 <Route path="/profile" element={<ProfilePage account={account} />} />
                 <Route path="/achievements" element={<Achievements />} />
                 <Route path="/settings" element={<Settings account={account} />} />
+                <Route path="/event" element={<EventPage />} />
                 <Route path="/auth/callback" element={<AuthCallback onAccountReady={handleAccountReady} />} />
-                <Route path="/admin" element={<AdminPanel />} />
+                <Route path={ADMIN_PATH} element={<AdminPanel />} />
                 <Route path="/privacy" element={<PrivacyPolicy />} />
                 <Route path="/terms" element={<Terms />} />
                 <Route path="*" element={<NotFound />} />
