@@ -20,6 +20,7 @@ import {
   faGear
 } from '@fortawesome/free-solid-svg-icons';
 import TopUpModal from './shop/TopUpModal';
+import WalletChips from './WalletChips';
 import LanguageSwitcher from './LanguageSwitcher';
 import { useMusic } from '../context/MusicContext';
 import { isAdmin, onAdminChanged } from '../services/admin';
@@ -44,10 +45,6 @@ const NAV = [
   { id: 'achievements', label: 'Достижения', icon: faTrophy, to: '/achievements' },
   { id: 'settings', label: 'Настройки', icon: faGear, to: '/settings' }
 ];
-
-// 100000 -> "100K", чтобы крупный баланс помещался в кнопку
-const compact = (n) =>
-  n >= 1e6 ? `${+(n / 1e6).toFixed(1)}M` : n >= 1e4 ? `${+(n / 1e3).toFixed(1)}K` : n.toLocaleString('ru-RU');
 
 function Badge({ count }) {
   if (!count) return null;
@@ -175,32 +172,13 @@ const Navbar = ({ account }) => {
         </button>
       )}
 
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          onClick={() => setShowTopUp(true)}
-          className="flex items-center justify-between rounded-xl border border-[#d4af37]/25 bg-black/30 px-2.5 py-2 transition hover:border-[#d4af37]/60"
-          title="Токены"
-        >
-          <span className="flex items-center gap-1.5 text-sm font-bold text-[#f3e5ab]">
-            <img src="/tokens.png" alt="" className="h-5 w-5" />
-            {compact(mafioBalance)}
-          </span>
-          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-[#d4af37] text-[10px] font-black text-black">+</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setShowTeniExchange(true)}
-          className="flex items-center justify-between rounded-xl border border-[#d4af37]/25 bg-black/30 px-2.5 py-2 transition hover:border-[#d4af37]/60"
-          title="Тени"
-        >
-          <span className="flex items-center gap-1.5 text-sm font-bold text-[#f3e5ab]">
-            <img src="/krital.svg" alt="" className="h-5 w-5 rounded-full" />
-            {compact(teniBalance)}
-          </span>
-          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-[#d4af37] text-[10px] font-black text-black">+</span>
-        </button>
-      </div>
+      <WalletChips
+        className="mt-3"
+        tokens={mafioBalance}
+        teni={teniBalance}
+        onTopUp={() => setShowTopUp(true)}
+        onExchange={() => setShowTeniExchange(true)}
+      />
 
       <button type="button" onClick={goPlay} className="btn btn-blood btn-pulse mt-4 w-full">
         <FontAwesomeIcon icon={faDiceSix} /> Играть
@@ -286,24 +264,13 @@ const Navbar = ({ account }) => {
             <Logo size={40} />
             <span className="font-display text-lg font-black gold-text">Mafia Play</span>
           </Link>
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setShowTopUp(true)}
-              className="flex items-center gap-1 rounded-full border border-[#d4af37]/30 bg-black/40 px-2 py-1"
-            >
-              <img src="/tokens.png" alt="" className="h-4 w-4" />
-              <span className="text-xs font-bold text-[#f3e5ab]">{compact(mafioBalance)}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowTeniExchange(true)}
-              className="flex items-center gap-1 rounded-full border border-[#d4af37]/30 bg-black/40 px-2 py-1"
-            >
-              <img src="/krital.svg" alt="" className="h-4 w-4 rounded-full" />
-              <span className="text-xs font-bold text-[#d4af37]">{teniBalance}</span>
-            </button>
-          </div>
+          <WalletChips
+            size="sm"
+            tokens={mafioBalance}
+            teni={teniBalance}
+            onTopUp={() => setShowTopUp(true)}
+            onExchange={() => setShowTeniExchange(true)}
+          />
         </div>
       </header>
 

@@ -1,0 +1,207 @@
+/* ============================================================
+   Балансы (меню и шапка) + обмен Токенов на Тени
+   ============================================================ */
+.wallet-chips { display: grid; grid-template-columns: 1fr; gap: 0.45rem; }
+.wallet-chips--sm { display: flex; gap: 0.4rem; }
+
+.wallet-chip {
+  --c: #f3d27a;
+  --c2: #c9971c;
+  --bg: rgba(58, 40, 8, 0.55);
+  position: relative;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.5rem;
+  overflow: hidden;
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
+  background:
+    radial-gradient(90% 120% at 0% 50%, color-mix(in srgb, var(--c) 18%, transparent), transparent 70%),
+    linear-gradient(160deg, var(--bg), rgba(10, 6, 4, 0.9));
+  padding: 0.45rem 0.45rem 0.45rem 0.45rem;
+  text-align: left;
+  box-shadow: 0 8px 24px -14px var(--c), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transition: transform 0.2s var(--ease-spring), border-color 0.2s, box-shadow 0.2s;
+}
+.wallet-chip--teni { --c: #b48cff; --c2: #7c3aed; --bg: rgba(42, 20, 74, 0.6); }
+.wallet-chip:hover { transform: translateY(-1px); border-color: var(--c); box-shadow: 0 10px 28px -10px var(--c); }
+.wallet-chip:active { transform: scale(0.97); }
+/* блик */
+.wallet-chip::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 35%, rgba(255, 255, 255, 0.14) 50%, transparent 65%);
+  transform: translateX(-120%);
+  animation: walletShine 6s ease-in-out infinite;
+  pointer-events: none;
+}
+.wallet-chip--teni::after { animation-delay: 3s; }
+@keyframes walletShine { 0%, 70% { transform: translateX(-120%); } 85%, 100% { transform: translateX(120%); } }
+
+.wallet-chip__coin {
+  display: flex;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--c) 35%, transparent), rgba(0, 0, 0, 0.5) 75%);
+  box-shadow: 0 0 14px -2px var(--c);
+}
+.wallet-chip__coin img { width: 24px; height: 24px; object-fit: contain; border-radius: 4px; }
+.wallet-chip--teni .wallet-chip__coin img { border-radius: 50%; }
+.wallet-chip__body { display: flex; min-width: 0; flex: 1; flex-direction: column; line-height: 1.05; }
+.wallet-chip__label { font-size: 9px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; color: color-mix(in srgb, var(--c) 70%, #a8916c); }
+.wallet-chip__value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 900;
+  color: #fff1c4;
+  font-variant-numeric: tabular-nums;
+  transition: color 0.3s, transform 0.3s var(--ease-spring);
+}
+.wallet-chip--teni .wallet-chip__value { color: #efe4ff; }
+.wallet-chip__plus {
+  display: flex;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--c) 85%, #fff), var(--c2));
+  color: #140b02;
+  font-size: 10px;
+  box-shadow: 0 0 10px -2px var(--c);
+}
+.wallet-chip--teni .wallet-chip__plus { color: #fff; }
+.wallet-chip--up .wallet-chip__value { color: #6ee7b7; transform: scale(1.12); }
+.wallet-chip--down .wallet-chip__value { color: #fca5a5; transform: scale(0.94); }
+.wallet-chip--up { box-shadow: 0 0 22px -4px #34d399; }
+
+/* компактный вариант для шапки телефона */
+.wallet-chip--sm { gap: 0.3rem; border-radius: 999px; padding: 0.2rem 0.25rem 0.2rem 0.2rem; }
+.wallet-chip--sm .wallet-chip__coin { width: 24px; height: 24px; }
+.wallet-chip--sm .wallet-chip__coin img { width: 17px; height: 17px; }
+.wallet-chip--sm .wallet-chip__value { font-family: inherit; font-size: 0.75rem; }
+.wallet-chip--sm .wallet-chip__plus { width: 18px; height: 18px; border-radius: 50%; font-size: 8px; }
+
+/* ---------- Окно обмена ---------- */
+.exch {
+  position: relative;
+  width: 100%;
+  max-width: 30rem;
+  max-height: 94vh;
+  overflow-y: auto;
+  border-radius: 28px 28px 0 0;
+  border: 1px solid rgba(180, 140, 255, 0.4);
+  background:
+    radial-gradient(90% 50% at 50% 0%, rgba(150, 100, 255, 0.25), transparent 70%),
+    linear-gradient(175deg, #170f24, #08060c 70%);
+  padding: 1.5rem 1.1rem calc(1.5rem + env(safe-area-inset-bottom, 0px));
+  box-shadow: 0 -10px 60px -20px rgba(150, 100, 255, 0.55);
+}
+@media (min-width: 640px) { .exch { border-radius: 28px; padding: 2rem; } }
+.exch__crystal {
+  display: inline-flex;
+  width: 84px;
+  height: 84px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(180, 140, 255, 0.35), transparent 70%);
+  box-shadow: 0 0 50px rgba(150, 100, 255, 0.5);
+}
+.exch__crystal img { width: 60px; height: 60px; border-radius: 50%; animation: float 4s ease-in-out infinite; }
+.exch-title {
+  background: linear-gradient(90deg, #c4b5fd, #f5f3ff, #d8b4fe, #a78bfa, #f5f3ff);
+  background-size: 250% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmerText 6s linear infinite;
+}
+.exch-balances { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 0.5rem; }
+.exch-bal {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.35);
+  padding: 0.6rem;
+}
+.exch-bal img { width: 26px; height: 26px; object-fit: contain; border-radius: 50%; }
+.exch-bal b { font-family: var(--font-display); font-size: 1.15rem; color: #fff1c4; }
+.exch-bal span { font-size: 9px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; color: #a8916c; }
+.exch-rate {
+  position: relative;
+  display: grid;
+  width: 100%;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 0.5rem;
+  overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid rgba(180, 140, 255, 0.25);
+  background: linear-gradient(160deg, rgba(36, 22, 60, 0.7), rgba(10, 7, 14, 0.9));
+  padding: 0.85rem 0.9rem;
+  transition: transform 0.25s var(--ease-spring), border-color 0.2s, box-shadow 0.2s;
+}
+.exch-rate:not(:disabled):hover { transform: translateY(-2px); border-color: #b48cff; box-shadow: 0 14px 30px -14px rgba(180, 140, 255, 0.9); }
+.exch-rate:disabled { opacity: 0.45; cursor: not-allowed; }
+.exch-rate--best { border-color: rgba(180, 140, 255, 0.7); box-shadow: 0 0 26px -10px rgba(180, 140, 255, 0.9); }
+.exch-rate__side { display: flex; align-items: center; gap: 0.4rem; font-family: var(--font-display); font-size: 1.15rem; font-weight: 900; }
+.exch-rate__side img { width: 24px; height: 24px; object-fit: contain; border-radius: 50%; }
+.exch-rate__arrow {
+  display: flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #c4b5fd, #7c3aed);
+  color: #fff;
+  font-size: 12px;
+  box-shadow: 0 0 14px rgba(150, 100, 255, 0.7);
+  transition: transform 0.3s var(--ease-spring);
+}
+.exch-rate:not(:disabled):hover .exch-rate__arrow { transform: translateX(3px) scale(1.1); }
+.exch-rate__tag {
+  position: absolute;
+  right: 10px;
+  top: 6px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #34d399, #059669);
+  padding: 0 0.45rem;
+  font-size: 9px;
+  font-weight: 900;
+  color: #fff;
+}
+.exch-rate__need { position: absolute; left: 12px; bottom: 4px; font-size: 9px; color: #fca5a5; }
+.exch-done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1.5rem 0 0.5rem;
+}
+.exch-done__burst {
+  position: relative;
+  display: flex;
+  width: 110px;
+  height: 110px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(180, 140, 255, 0.5), transparent 70%);
+  animation: pop 0.6s var(--ease-spring) both;
+}
+.exch-done__burst img { width: 70px; height: 70px; border-radius: 50%; filter: drop-shadow(0 0 20px rgba(180, 140, 255, 0.9)); }
